@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,48 +8,50 @@ import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import TransitionWrapper from '@/components/TransitionWrapper';
 import Navbar from '@/components/Navbar';
-import { useAuth } from '@/context/AuthContext';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    rememberMe: false,
   });
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleCheckboxChange = (checked: boolean) => {
-    setFormData((prev) => ({ ...prev, rememberMe: checked }));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Simple validation
+    setError(null);
+
     if (!formData.email || !formData.password) {
-      toast.error('Please fill in all required fields');
+      setError('Please enter both email and password.');
       return;
     }
-    
+
     try {
       setIsLoading(true);
-      
-      // Use the login function from AuthContext
-      await login(formData.email, formData.password);
-      
-      // Login success
+
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      console.log('User logged in:', userCredential.user);
+
       toast.success('Logged in successfully');
-      navigate('/debates');
-    } catch (error) {
-      console.error('Login error:', error);
-      toast.error('Invalid email or password');
+      navigate('/home');
+      
+    } catch (err: any) {
+      console.error('Login error:', err);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password. Please try again.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Please enter a valid email address.');
+      } else {
+        setError('Login failed. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +72,8 @@ const Login: React.FC = () => {
             
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
+                {error && <p className="text-sm text-red-600 text-center">{error}</p>}
+                
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -88,12 +91,6 @@ const Login: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <Link 
-                      to="/forgot-password" 
-                      className="text-xs text-primary hover:underline underline-offset-4"
-                    >
-                      Forgot password?
-                    </Link>
                   </div>
                   <Input
                     id="password"
@@ -105,20 +102,6 @@ const Login: React.FC = () => {
                     className="input-effect"
                     required
                   />
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="rememberMe" 
-                    checked={formData.rememberMe}
-                    onCheckedChange={handleCheckboxChange}
-                  />
-                  <Label 
-                    htmlFor="rememberMe" 
-                    className="text-sm font-normal cursor-pointer"
-                  >
-                    Remember me for 30 days
-                  </Label>
                 </div>
               </CardContent>
               

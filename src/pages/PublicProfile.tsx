@@ -6,6 +6,26 @@ import Logo from "@/components/Logo";
 import { useParams } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { useState, useEffect } from "react";
+import Navbar from "@/components/Navbar";
+import TransitionWrapper from "@/components/TransitionWrapper";
+import type { ExtendedUser, VerificationStatus } from "@/context/AuthContext";
+
+interface SocialLinks {
+  [key: string]: string;
+}
+
+interface ProfileUser {
+  name: string;
+  username: string;
+  bio: string;
+  photoURL: string;
+  verificationStatus?: {
+    [key: string]: VerificationStatus;
+  };
+  socialLinks?: SocialLinks;
+}
 
 // Custom TikTok icon
 const TikTokIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
@@ -24,26 +44,54 @@ const XIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
 export default function PublicProfile() {
   const { username } = useParams();
   const { findUserByUsername } = useAuth();
-  const profileUser = username ? findUserByUsername(username) : null;
+  const [profileUser, setProfileUser] = useState<ExtendedUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Helper function to check if user has any verified accounts
+  const hasVerifiedAccounts = (user: ExtendedUser) => {
+    return Object.values(user.verificationStatus || {}).some(
+      (status): status is VerificationStatus => 
+        status && typeof status === 'object' && status.status === 'verified'
+    );
+  };
+
+  useEffect(() => {
+    const loadUser = async () => {
+      if (username) {
+        const user = await findUserByUsername(username);
+        setProfileUser(user);
+        setLoading(false);
+      }
+    };
+    loadUser();
+  }, [username, findUserByUsername]);
+
+  // If loading, show a loading state
+  if (loading) {
+    return (
+      <>
+        <Navbar />
+        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 className="text-2xl font-semibold mb-4">Loading profile...</h1>
+          </div>
+        </TransitionWrapper>
+      </>
+    );
+  }
 
   // If no user is found, show a message
   if (!profileUser) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="container max-w-2xl mx-auto py-8 space-y-8">
-          <div className="flex items-center gap-2.5">
-            <Logo size={32} angle={135} />
-            <span className="text-xl font-medium">Arena</span>
+      <>
+        <Navbar />
+        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 className="text-2xl font-semibold mb-4">Profile Not Found</h1>
+            <p>The user you're looking for doesn't exist.</p>
           </div>
-          <Card className="rounded-xl border bg-card p-6">
-            <div className="text-center py-8">
-              <h2 className="text-xl font-medium mb-2">Profile Not Found</h2>
-              <p className="text-muted-foreground mb-4">The profile you're looking for doesn't exist or has been removed.</p>
-              <Button onClick={() => window.location.href = "/"}>Go Home</Button>
-            </div>
-          </Card>
-        </div>
-      </div>
+        </TransitionWrapper>
+      </>
     );
   }
 
@@ -74,7 +122,15 @@ export default function PublicProfile() {
               </div>
               
               <div className="text-center sm:text-left">
-                <CardTitle className="text-2xl font-medium mb-1">{profileUser.name}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-2xl font-medium">{profileUser.name}</CardTitle>
+                  {profileUser && hasVerifiedAccounts(profileUser) && (
+                    <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                      <Check className="h-3 w-3 mr-1" />
+                      Verified
+                    </Badge>
+                  )}
+                </div>
                 <CardDescription>@{profileUser.username}</CardDescription>
                 <p className="mt-3 text-muted-foreground">
                   {profileUser.bio || 'Tell us about yourself...'}

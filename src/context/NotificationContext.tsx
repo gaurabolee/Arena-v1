@@ -23,7 +23,7 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Calculate unread counts
@@ -58,6 +58,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
     setNotifications(prev => [newNotification, ...prev]);
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      // Fetch notifications for the current user
+      // Example: fetchNotifications(currentUser.uid);
+    }
+  }, [currentUser]);
 
   return (
     <NotificationContext.Provider

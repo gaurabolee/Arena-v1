@@ -28,7 +28,7 @@ const XIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
 );
 
 const InviteUsers: React.FC = () => {
-  const { user } = useAuth();
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [recipientName, setRecipientName] = useState('');
   const [currentTopic, setCurrentTopic] = useState('');
@@ -36,23 +36,6 @@ const InviteUsers: React.FC = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['linkedin']);
   
-  if (!user) {
-    return (
-      <>
-        <Navbar />
-        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h1 className="text-2xl font-semibold mb-4">Please Log In</h1>
-            <p className="mb-6">You need to be logged in to create invites</p>
-            <Button asChild>
-              <Link to="/login">Log In</Link>
-            </Button>
-          </div>
-        </TransitionWrapper>
-      </>
-    );
-  }
-
   const handleAddTopic = () => {
     if (currentTopic.trim() && !topics.includes(currentTopic.trim())) {
       setTopics([...topics, currentTopic.trim()]);
@@ -76,7 +59,7 @@ const InviteUsers: React.FC = () => {
     const encodedName = encodeURIComponent(recipientName);
     const encodedTopics = encodeURIComponent(topics.join(','));
     const encodedPlatforms = encodeURIComponent(selectedPlatforms.join(','));
-    const inviteLink = `${baseUrl}/invite/${user.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}`;
+    const inviteLink = `${baseUrl}/invite/${currentUser.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}`;
     navigator.clipboard.writeText(inviteLink);
     toast.success('Invite link copied to clipboard');
   };
@@ -257,21 +240,21 @@ const InviteUsers: React.FC = () => {
                         <div className="relative">
                           <Avatar className="h-20 w-20">
                             <AvatarImage 
-                              src={user?.photoURL || undefined} 
-                              alt={user?.name}
+                              src={currentUser?.photoURL || undefined} 
+                              alt={currentUser?.name}
                               className="object-cover"
                             />
                             <AvatarFallback>
-                              {user?.name ? user.name.charAt(0).toUpperCase() : <User className="h-12 w-12" />}
+                              {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : <User className="h-12 w-12" />}
                             </AvatarFallback>
                           </Avatar>
                         </div>
                         
                         <div className="text-center sm:text-left">
-                          <CardTitle className="text-2xl font-medium mb-1">{user?.name}</CardTitle>
-                          <CardDescription>@{user?.username}</CardDescription>
+                          <CardTitle className="text-2xl font-medium mb-1">{currentUser?.name}</CardTitle>
+                          <CardDescription>@{currentUser?.username}</CardDescription>
                           <p className="mt-3 text-muted-foreground">
-                            {user?.bio || 'Tell us about yourself...'}
+                            {currentUser?.bio || 'Tell us about yourself...'}
                           </p>
                         </div>
                       </div>
@@ -282,7 +265,7 @@ const InviteUsers: React.FC = () => {
                         <div className="space-y-2">
                           <h3 className="font-medium">Verified Accounts</h3>
                           <div className="flex flex-wrap gap-3">
-                            {Object.entries(user?.socialLinks || {}).map(([platform, url]) => {
+                            {Object.entries(currentUser?.socialLinks || {}).map(([platform, url]) => {
                               if (!url) return null;
                               
                               const platformInfo = platforms.find(p => p.id === platform);

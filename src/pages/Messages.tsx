@@ -18,25 +18,6 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const Messages: React.FC = () => {
-  const { user } = useAuth();
-
-  if (!user) {
-    return (
-      <>
-        <Navbar />
-        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h1 className="text-2xl font-semibold mb-4">Please Log In</h1>
-            <p className="mb-6">You need to be logged in to view your texts</p>
-            <Button asChild>
-              <Link to="/login">Log In</Link>
-            </Button>
-          </div>
-        </TransitionWrapper>
-      </>
-    );
-  }
-
   return (
     <>
       <Navbar />

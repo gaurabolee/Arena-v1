@@ -1,4 +1,3 @@
-
 import React, { ReactNode, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -9,6 +8,16 @@ interface TransitionWrapperProps {
   animation?: 'fade' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'scale';
   duration?: number;
 }
+
+const animations = {
+  'slide-up': {
+    initial: { opacity: 0, y: 100 },
+    animate: { opacity: 1, y: -100 },
+    exit: { opacity: 0, y: 100 },
+    transition: { type: "spring", stiffness: 300, damping: 30 }
+  },
+  // ... other animations
+};
 
 const TransitionWrapper: React.FC<TransitionWrapperProps> = ({
   children,

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/context/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { User as UserIcon, Linkedin, Twitter, Facebook, Instagram, Copy, Mail, Share, Youtube, Shield, Settings, Camera, CopyIcon, CheckIcon, Loader2, MoreVertical, ImagePlus, Edit3, Trash2 } from 'lucide-react';
@@ -31,6 +31,9 @@ import { Slider } from "@/components/ui/slider";
 import heic2any from 'heic2any';
 import { createWorker, Worker } from 'tesseract.js';
 import Logo from '@/components/Logo';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { Badge } from "@/components/ui/badge";
 
 interface SocialLinks {
   linkedin: string;
@@ -97,11 +100,16 @@ const generateVerificationCode = () => {
   return code;
 };
 
+const generateVerificationSymbol = () => {
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Removed similar looking letters I, O
+  const randomIndex = Math.floor(Math.random() * letters.length);
+  return letters[randomIndex];
+};
+
 const Profile: React.FC<ProfileProps> = () => {
-  const { user, logout, updateProfile } = useAuth();
+  const { currentUser, logout, updateProfile, isEditing, setIsEditing, makeAdmin } = useAuth();
   const navigate = useNavigate();
   const { username } = useParams();
-  const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -110,16 +118,16 @@ const Profile: React.FC<ProfileProps> = () => {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showValidateDialog, setShowValidateDialog] = useState(false);
   const [socialLinks, setSocialLinks] = useState<SocialLinks>({
-    linkedin: user?.socialLinks?.linkedin ?? '',
-    twitter: user?.socialLinks?.twitter ?? '',
-    facebook: user?.socialLinks?.facebook ?? '',
-    instagram: user?.socialLinks?.instagram ?? '',
-    youtube: user?.socialLinks?.youtube ?? '',
-    tiktok: user?.socialLinks?.tiktok ?? ''
+    linkedin: currentUser?.socialLinks?.linkedin ?? '',
+    twitter: currentUser?.socialLinks?.twitter ?? '',
+    facebook: currentUser?.socialLinks?.facebook ?? '',
+    instagram: currentUser?.socialLinks?.instagram ?? '',
+    youtube: currentUser?.socialLinks?.youtube ?? '',
+    tiktok: currentUser?.socialLinks?.tiktok ?? ''
   });
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const [photoURL, setPhotoURL] = useState<string>(user?.photoURL || '');
+  const [photoURL, setPhotoURL] = useState<string>(currentUser?.photoURL || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
   const [selectedPlatform, setSelectedPlatform] = useState<keyof SocialLinks | null>(null);
@@ -151,17 +159,19 @@ const Profile: React.FC<ProfileProps> = () => {
   const editorRef = useRef<AvatarEditor>(null);
 
   // Determine if we're viewing our own profile or someone else's
-  const isOwnProfile = !username || (user && user.username === username);
+  const isOwnProfile = !username || (currentUser && currentUser.username === username);
 
   useEffect(() => {
-    if (user) {
+    console.log('Profile component loaded. Current user:', currentUser);
+    console.log('Open edit mode:', isEditing);
+    if (currentUser) {
       setFormData({
-        name: user.name,
-        username: user.username,
-        bio: user.bio || '',
+        name: currentUser.name,
+        username: currentUser.username,
+        bio: currentUser.bio || '',
       });
     }
-  }, [user]);
+  }, [currentUser]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -188,10 +198,16 @@ const Profile: React.FC<ProfileProps> = () => {
   }, [verificationStatus]);
 
   useEffect(() => {
-    if (user?.photoURL) {
-      setPhotoURL(user.photoURL);
+    if (currentUser?.photoURL) {
+      setPhotoURL(currentUser.photoURL);
     }
-  }, [user?.photoURL]);
+  }, [currentUser?.photoURL]);
+
+  useEffect(() => {
+    if (isEditing) {
+      setIsEditing(true);
+    }
+  }, [isEditing]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -239,7 +255,7 @@ const Profile: React.FC<ProfileProps> = () => {
   };
 
   const copyInviteLink = () => {
-    const inviteLink = `${window.location.origin}/register?referral=${user?.username}`;
+    const inviteLink = `${window.location.origin}/register?referral=${currentUser?.username}`;
     navigator.clipboard.writeText(inviteLink);
     toast.success('Invite link copied to clipboard');
   };
@@ -328,7 +344,7 @@ const Profile: React.FC<ProfileProps> = () => {
 
       // Create updated user object with removed photo
       const updatedUser = {
-        ...user,
+        ...currentUser,
         photoURL: null
       };
 
@@ -419,7 +435,7 @@ const Profile: React.FC<ProfileProps> = () => {
         try {
           console.log('Updating profile with new photo');
           await updateProfile({
-            ...user,
+            ...currentUser,
             photoURL: base64
           });
 
@@ -505,10 +521,10 @@ const Profile: React.FC<ProfileProps> = () => {
   };
 
   const handleVerificationStart = (platform: keyof SocialLinks) => {
-    const code = generateVerificationCode();
+    const symbol = generateVerificationSymbol();
     setVerificationStatus(prev => ({
       ...prev,
-      [platform]: { status: 'unverified', code, timestamp: Date.now() }
+      [platform]: { status: 'unverified', code: symbol, timestamp: Date.now() }
     }));
     setSelectedPlatform(platform);
     setShowValidateDialog(true);
@@ -535,100 +551,35 @@ const Profile: React.FC<ProfileProps> = () => {
       return;
     }
 
-    if (verificationStep === 'code' && !verificationScreenshots.code) {
-      toast.error('Please upload a screenshot showing the verification code');
-      return;
-    }
-
-    if (verificationStep === 'profile' && !verificationScreenshots.profile) {
-      toast.error('Please upload a screenshot of your profile');
-      return;
-    }
-
-    setIsVerifying(true);
-    let worker: Worker | null = null;
-
     try {
-      const loadingToast = toast.loading(
-        verificationStep === 'code' 
-          ? 'Verifying code in screenshot...' 
-          : 'Verifying profile...'
-      );
+      // Send verification request to admin
+      await setDoc(doc(db, 'verificationRequests', `${currentUser.uid}_${platform}`), {
+        userId: currentUser.uid,
+        username: currentUser.username,
+        platform,
+        profileUrl: link,
+        verificationCode: verificationStatus[platform].code,
+        requestedAt: serverTimestamp(),
+        status: 'pending'
+      });
 
-      if (verificationStep === 'code') {
-        // Verify the code screenshot
-        worker = await createWorker('eng');
-        const { data: { text } } = await worker.recognize(verificationScreenshots.code!);
-        
-        const cleanText = text.replace(/[\s\n\r]+/g, '').toUpperCase();
-        const cleanCode = verificationStatus[platform].code?.replace(/[\s\n\r]+/g, '').toUpperCase();
-
-        console.log('=== CODE VERIFICATION TEST ===');
-        console.log('Raw detected text:', text);
-        console.log('Cleaned text:', cleanText);
-        console.log('Looking for code:', cleanCode);
-        console.log('Code found:', cleanText.includes(cleanCode || ''));
-        console.log('===========================');
-
-        const isCodeFound = cleanCode ? cleanText.includes(cleanCode) : false;
-
-        if (!isCodeFound) {
-          toast.dismiss(loadingToast);
-          toast.error('Verification code not found. Please ensure the code is clearly visible in the screenshot.');
-          return;
+      // Update local verification status
+      setVerificationStatus(prev => ({
+        ...prev,
+        [platform]: {
+          status: 'pending',
+          code: prev[platform].code,
+          timestamp: Date.now()
         }
+      }));
 
-        // Move to profile verification step
-        toast.dismiss(loadingToast);
-        toast.success('Code verified! Please upload a screenshot of your profile without the code.');
-        setVerificationStep('profile');
-      } else {
-        // Verify the profile screenshot matches the URL
-        worker = await createWorker('eng');
-        const { data: { text } } = await worker.recognize(verificationScreenshots.profile!);
-        
-        const cleanText = text.replace(/[\s\n\r]+/g, '').toLowerCase();
-        const cleanUrl = link.toLowerCase().replace(/^https?:\/\/(www\.)?/, '');
+      // Close dialog and show success message
+      setShowValidateDialog(false);
+      toast.success('Verification request sent! We will notify you once verified.');
 
-        console.log('=== URL VERIFICATION TEST ===');
-        console.log('Raw detected text:', text);
-        console.log('Cleaned text:', cleanText);
-        console.log('Looking for URL:', cleanUrl);
-        console.log('URL found:', cleanText.includes(cleanUrl));
-        console.log('===========================');
-
-        const isUrlFound = cleanText.includes(cleanUrl);
-
-        toast.dismiss(loadingToast);
-
-        if (!isUrlFound) {
-          toast.error('Could not verify profile. Please ensure the screenshot shows your profile URL.');
-          return;
-        }
-
-        // Complete verification
-        setVerificationStatus(prev => ({
-          ...prev,
-          [platform]: {
-            status: 'verified',
-            code: prev[platform].code,
-            timestamp: Date.now()
-          }
-        }));
-
-        toast.success('Profile verified successfully!');
-        setShowValidateDialog(false);
-        setVerificationScreenshots({ code: null, profile: null });
-        setVerificationStep('code');
-      }
     } catch (error) {
-      console.error('Error during verification:', error);
-      toast.error('An error occurred during verification. Please try again.');
-    } finally {
-      if (worker) {
-        await worker.terminate();
-      }
-      setIsVerifying(false);
+      console.error('Error submitting verification:', error);
+      toast.error('Failed to submit verification request. Please try again.');
     }
   };
 
@@ -637,7 +588,48 @@ const Profile: React.FC<ProfileProps> = () => {
     toast.success('Verification code copied to clipboard');
   };
 
-  if (!user) {
+  const handleMakeAdmin = async () => {
+    if (currentUser) {
+      try {
+        // Update user document in Firestore
+        const userRef = doc(db, 'users', currentUser.uid);
+        await setDoc(userRef, { isAdmin: true }, { merge: true });
+        
+        // Update local state
+        setCurrentUser(prev => prev ? { ...prev, isAdmin: true } : null);
+        
+        toast.success('You are now an admin!');
+      } catch (error) {
+        console.error('Error making user admin:', error);
+        toast.error('Failed to set admin status');
+      }
+    }
+  };
+
+  const makeAdminDirectly = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userRef, { isAdmin: true }, { merge: true });
+      
+      // Update the current user object with admin status
+      const updatedUser = {
+        ...currentUser,
+        isAdmin: true
+      };
+      
+      // Update the auth context
+      updateProfile(updatedUser);
+      
+      toast.success('You are now an admin!');
+    } catch (error) {
+      console.error('Error making admin:', error);
+      toast.error('Failed to set admin status');
+    }
+  };
+
+  if (!currentUser) {
     return (
       <>
         <Navbar />
@@ -666,20 +658,28 @@ const Profile: React.FC<ProfileProps> = () => {
                   <Avatar className="h-20 w-20">
                     <AvatarImage 
                       src={photoURL || undefined} 
-                      alt={user.name}
+                      alt={currentUser.name}
                       className="object-cover"
                     />
                     <AvatarFallback>
-                      {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
+                      {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
                     </AvatarFallback>
                   </Avatar>
                 </div>
                 
                 <div className="text-center sm:text-left">
-                  <CardTitle className="text-2xl font-medium mb-1">{user.name}</CardTitle>
-                  <CardDescription>@{user.username}</CardDescription>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-2xl font-medium mb-1">{formData.name}</CardTitle>
+                    {Object.values(verificationStatus).some(status => status.status === 'verified') && (
+                      <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                        <CheckIcon className="h-3 w-3 mr-1" />
+                        Verified
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription>@{formData.username}</CardDescription>
                   <p className="mt-3 text-muted-foreground">
-                    {user.bio || 'Tell us about yourself...'}
+                    {formData.bio || 'Tell us about yourself...'}
                   </p>
                 </div>
                 
@@ -746,215 +746,63 @@ const Profile: React.FC<ProfileProps> = () => {
       <Dialog open={showValidateDialog} onOpenChange={setShowValidateDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {selectedPlatform && `Verify your ${selectedPlatform === 'twitter' ? 'X' : selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1)}`}
-            </DialogTitle>
+            <DialogTitle>Verify your {selectedPlatform} profile</DialogTitle>
             <DialogDescription>
-              Follow the steps below to verify your profile
+              Follow these steps to verify your profile
             </DialogDescription>
           </DialogHeader>
-          
-          {selectedPlatform && verificationStatus[selectedPlatform].status !== 'verified' && (
-            <div className="space-y-6 py-4">
-              {/* Verification Code Section */}
-              <div className="space-y-2">
-                <Label>Verification Code</Label>
-                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                  <code className="text-lg font-mono">
-                    {verificationStatus[selectedPlatform].code}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleCopyCode(verificationStatus[selectedPlatform].code!)}
-                  >
-                    <CopyIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Instructions */}
-              <div className="space-y-2">
-                <h4 className="font-medium">Instructions:</h4>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Copy the verification code above</li>
-                  <li>
-                    {selectedPlatform === 'linkedin' && "Paste this code in your LinkedIn profile's About section without updating"}
-                    {selectedPlatform === 'twitter' && "Paste this code in your X bio without updating"}
-                    {selectedPlatform === 'facebook' && "Paste this code in your Facebook profile's Bio section without updating"}
-                    {selectedPlatform === 'instagram' && "Paste this code in your Instagram bio without updating"}
-                    {selectedPlatform === 'youtube' && "Paste this code in your YouTube channel's About section without updating"}
-                    {selectedPlatform === 'tiktok' && "Paste this code in your TikTok bio without updating"}
-                  </li>
-                  <li>Take a screenshot showing the code in your profile and upload it below</li>
-                </ol>
-              </div>
-
-              {/* Screenshot Upload */}
-              <div className="space-y-2">
-                <Label>Screenshot</Label>
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-center w-full">
-                    <label 
-                      className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted/70 relative overflow-hidden"
-                      onClick={() => screenshotInputRef.current?.click()}
-                    >
-                      <div className="flex flex-col items-center justify-center h-full w-full">
-                        {verificationScreenshots[verificationStep] ? (
-                          <div className="relative w-full h-full flex items-center justify-center">
-                            <img 
-                              src={URL.createObjectURL(verificationScreenshots[verificationStep]!)} 
-                              alt="Verification screenshot" 
-                              className="max-h-full max-w-full object-contain p-2"
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                className="bg-background/80 hover:bg-background"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setVerificationScreenshots(prev => ({
-                                    ...prev,
-                                    [verificationStep]: null
-                                  }));
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Remove
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center p-6 text-center">
-                            <svg className="w-10 h-10 mb-4 text-muted-foreground" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
-                              <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
-                            </svg>
-                            <p className="mb-2 text-sm text-muted-foreground">
-                              <span className="font-semibold">Click to upload</span> or drag and drop
-                            </p>
-                            <p className="text-xs text-muted-foreground">PNG, JPG, JPEG or HEIC (MAX. 5MB)</p>
-                          </div>
-                        )}
-                      </div>
-                    </label>
-                    <input 
-                      ref={screenshotInputRef}
-                      type="file" 
-                      className="hidden" 
-                      accept="image/png,image/jpeg,image/jpg,image/heic"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-
-                        // Reset input value
-                        e.target.value = '';
-
-                        // Validate file type
-                        const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic'];
-                        if (!validTypes.includes(file.type)) {
-                          toast.error('Please upload a valid image file (JPEG, PNG, HEIC)');
-                          return;
-                        }
-
-                        if (file.size > 5 * 1024 * 1024) {
-                          toast.error('Image size should be less than 5MB');
-                          return;
-                        }
-
-                        // Handle HEIC conversion if needed
-                        if (file.type === 'image/heic') {
-                          try {
-                            const blob = await heic2any({
-                              blob: file,
-                              toType: 'image/jpeg',
-                              quality: 0.8
-                            });
-                            const processedBlob = Array.isArray(blob) ? blob[0] : blob;
-                            const processedFile = new File([processedBlob], file.name.replace('.heic', '.jpg'), { type: 'image/jpeg' });
-                            setVerificationScreenshots(prev => ({
-                              ...prev,
-                              [verificationStep]: processedFile
-                            }));
-                          } catch (error) {
-                            console.error('Error converting HEIC:', error);
-                            toast.error('Failed to process HEIC image. Please try again.');
-                          }
-                        } else {
-                          setVerificationScreenshots(prev => ({
-                            ...prev,
-                            [verificationStep]: file
-                          }));
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Profile URL Input */}
-              <div className="space-y-2">
-                <Label>Profile URL</Label>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Verification Symbol</Label>
+              <div className="flex items-center gap-2">
                 <Input
-                  placeholder={`Enter your ${selectedPlatform} profile URL`}
-                  value={socialLinks[selectedPlatform]}
-                  onChange={(e) => {
-                    const url = e.target.value;
+                  readOnly
+                  value={selectedPlatform ? verificationStatus[selectedPlatform].code || '' : ''}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    if (selectedPlatform && verificationStatus[selectedPlatform].code) {
+                      handleCopyCode(verificationStatus[selectedPlatform].code!);
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Copy this symbol and paste it in your {selectedPlatform} bio
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Profile URL</Label>
+              <Input
+                placeholder={`Enter your ${selectedPlatform} profile URL`}
+                value={selectedPlatform ? socialLinks[selectedPlatform] : ''}
+                onChange={(e) => {
+                  if (selectedPlatform) {
                     setSocialLinks(prev => ({
                       ...prev,
-                      [selectedPlatform]: url
+                      [selectedPlatform]: e.target.value
                     }));
-                  }}
-                />
-              </div>
-
-              {/* Submit Button */}
-              <DialogFooter>
-                <Button
-                  onClick={() => handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform])}
-                  disabled={isVerifying || 
-                    !validateProfileUrl(selectedPlatform, socialLinks[selectedPlatform]) ||
-                    !verificationScreenshots[verificationStep]
                   }
-                  className="w-full sm:w-auto"
-                >
-                  {isVerifying ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Verifying...
-                    </>
-                  ) : verificationStep === 'code' ? (
-                    'Verify Profile'
-                  ) : (
-                    'Complete Verification'
-                  )}
-                </Button>
-              </DialogFooter>
+                }}
+              />
             </div>
-          )}
-
-          {/* Success State */}
-          {selectedPlatform && verificationStatus[selectedPlatform].status === 'verified' && (
-            <div className="py-6 text-center space-y-4">
-              <div className="mx-auto w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckIcon className="h-6 w-6 text-green-600" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="font-medium">Verification Successful!</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your {selectedPlatform === 'twitter' ? 'X' : selectedPlatform} profile has been verified.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => setShowValidateDialog(false)}
-              >
-                Close
-              </Button>
-            </div>
-          )}
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                if (selectedPlatform) {
+                  handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform]);
+                }
+              }}
+              disabled={!selectedPlatform || !socialLinks[selectedPlatform]}
+            >
+              Verify Profile
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1083,22 +931,20 @@ const Profile: React.FC<ProfileProps> = () => {
 
       {/* Edit Profile Dialog */}
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Edit Profile</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader className="pb-2">
+            <DialogTitle className="text-lg">Edit Profile</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
               Update your profile information
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-6 py-4">
+          <div className="space-y-2 py-1">
             {/* Profile Picture Section */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Profile Picture</Label>
-              <div className="flex flex-col items-center gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Profile Picture</Label>
+              <div className="flex flex-col items-center gap-1">
                 <div className="relative group cursor-pointer" onClick={() => {
                   if (photoURL) {
-                    // If there's an existing photo, create a File object from it and open editor
                     fetch(photoURL)
                       .then(res => res.blob())
                       .then(blob => {
@@ -1110,43 +956,44 @@ const Profile: React.FC<ProfileProps> = () => {
                         toast.error('Failed to load image for editing');
                       });
                   } else {
-                    // If no photo exists, open file picker
                     fileInputRef.current?.click();
                   }
                 }}>
-                  <Avatar className="h-20 w-20">
+                  <Avatar className="h-16 w-16">
                     <AvatarImage 
                       src={photoURL || undefined} 
-                      alt={user.name}
-                      className="object-cover"
+                      alt={currentUser.name}
+                      className="object-cover rounded-full"
                     />
                     <AvatarFallback>
-                      {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
+                      {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-8 w-8" />}
                     </AvatarFallback>
                   </Avatar>
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                     {photoURL ? (
-                      <Edit3 className="h-5 w-5 text-white" />
+                      <Edit3 className="h-3 w-3 text-white" />
                     ) : (
-                      <Camera className="h-5 w-5 text-white" />
+                      <Camera className="h-3 w-3 text-white" />
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   <Button
                     variant="outline"
                     size="sm"
+                    className="text-[10px] h-6 px-2"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    {photoURL ? 'Change Photo' : 'Upload Photo'}
+                    {photoURL ? 'Change' : 'Upload'}
                   </Button>
                   {photoURL && (
                     <Button
                       variant="outline"
                       size="sm"
+                      className="text-[10px] h-6 px-2 text-red-500 hover:text-red-600"
                       onClick={handleImageDelete}
                     >
-                      Remove Photo
+                      Remove
                     </Button>
                   )}
                 </div>
@@ -1154,36 +1001,36 @@ const Profile: React.FC<ProfileProps> = () => {
             </div>
 
             {/* Name Input */}
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-sm font-medium">Name</Label>
+            <div className="space-y-1">
+              <Label htmlFor="name" className="text-xs font-medium">Name</Label>
               <Input
                 id="name"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
                 placeholder="Your name"
-                className="h-9"
+                className="h-7 text-xs"
               />
             </div>
 
             {/* Username Input */}
-            <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">Username</Label>
+            <div className="space-y-1">
+              <Label htmlFor="username" className="text-xs font-medium">Username</Label>
               <Input
                 id="username"
                 name="username"
                 value={formData.username}
                 onChange={handleChange}
                 placeholder="Your username"
-                className="h-9"
+                className="h-7 text-xs"
               />
             </div>
 
             {/* Bio Input */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <Label htmlFor="bio" className="text-sm font-medium">Bio</Label>
-                <span className="text-xs text-muted-foreground">
+                <Label htmlFor="bio" className="text-xs font-medium">Bio</Label>
+                <span className="text-[10px] text-muted-foreground">
                   {formData.bio.length}/280
                 </span>
               </div>
@@ -1193,17 +1040,16 @@ const Profile: React.FC<ProfileProps> = () => {
                 value={formData.bio}
                 onChange={handleChange}
                 placeholder="Tell us about yourself..."
-                rows={3}
+                rows={2}
                 maxLength={280}
-                className="resize-none"
+                className="resize-none text-xs min-h-[64px]"
               />
             </div>
 
             {/* Social Verification */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Social Verification</Label>
-              
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Social Verification</Label>
+              <div className="grid grid-cols-6 gap-1">
                 <Button 
                   variant="outline" 
                   size="icon"
@@ -1294,15 +1140,14 @@ const Profile: React.FC<ProfileProps> = () => {
                   <TikTokIcon className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="text-sm text-foreground/80 mt-2">At least one social verification required</p>
+              <p className="text-[10px] text-muted-foreground">At least one social verification required</p>
             </div>
           </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsEditing(false)}>
+          <DialogFooter className="gap-1 sm:gap-0 mt-2">
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave}>
+            <Button size="sm" className="h-7 text-xs" onClick={handleSave}>
               Save Changes
             </Button>
           </DialogFooter>
@@ -1320,7 +1165,7 @@ const Profile: React.FC<ProfileProps> = () => {
 
           <div className="space-y-4">
             <a 
-              href={`/profile/${user.username}`}
+              href={`/profile/${currentUser.username}`}
               target="_blank"
               rel="noopener noreferrer"
               className="block hover:opacity-80 transition-opacity"
@@ -1330,17 +1175,17 @@ const Profile: React.FC<ProfileProps> = () => {
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
                       <AvatarImage 
-                        src={user.photoURL || undefined} 
-                        alt={user.name}
+                        src={currentUser.photoURL || undefined} 
+                        alt={currentUser.name}
                         className="object-cover"
                       />
                       <AvatarFallback>
-                        {user.name ? user.name.charAt(0).toUpperCase() : <UserIcon className="h-8 w-8" />}
+                        {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-8 w-8" />}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="font-semibold">{user.name}</h3>
-                      <p className="text-sm text-muted-foreground">@{user.username}</p>
+                      <h3 className="font-semibold">{currentUser.name}</h3>
+                      <p className="text-sm text-muted-foreground">@{currentUser.username}</p>
                     </div>
                   </div>
                 </CardHeader>
@@ -1351,7 +1196,7 @@ const Profile: React.FC<ProfileProps> = () => {
               <Label>Share Link</Label>
               <div className="flex gap-2">
                 <Input 
-                  value={`${window.location.origin}/register?referral=${user?.username}`}
+                  value={`${window.location.origin}/register?referral=${currentUser?.username}`}
                   readOnly
                 />
                 <Button onClick={copyInviteLink}>
@@ -1362,6 +1207,30 @@ const Profile: React.FC<ProfileProps> = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {currentUser?.isAdmin && (
+        <div className="mt-4 p-4 bg-green-100 rounded">
+          <p className="text-green-800">You are an admin! ✨</p>
+          <Link 
+            to="/admin"
+            className="mt-2 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
+          >
+            Go to Admin Panel
+          </Link>
+        </div>
+      )}
+
+      {currentUser?.email === 'gaurabolee123@gmail.com' && !currentUser?.isAdmin && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+          <Button 
+            onClick={makeAdminDirectly}
+            variant="outline"
+            className="w-full"
+          >
+            Make Admin
+          </Button>
+        </div>
+      )}
     </>
   );
 };

@@ -124,12 +124,12 @@ const Register: React.FC = () => {
   return (
     <>
       <Navbar />
-      <TransitionWrapper animation="slide-up" className="min-h-screen pt-20 pb-10 px-4">
-        <div className="max-w-md mx-auto pt-10">
-          <Card className="border-0 shadow-subtle overflow-hidden">
-            <CardHeader className="space-y-1 text-center">
-              <CardTitle className="text-2xl font-medium">Create an account</CardTitle>
-              <CardDescription>
+      <TransitionWrapper animation="slide-up" className="min-h-screen -mt-24 px-4">
+        <div className="max-w-md mx-auto -translate-y-24 transform">
+          <Card className="border-0 shadow-subtle overflow-hidden relative -top-12">
+            <CardHeader className="space-y-1 text-center py-2">
+              <CardTitle className="text-lg font-medium">Create an account</CardTitle>
+              <CardDescription className="text-xs">
                 {isInvitation 
                   ? `You've been invited by ${invitedBy} to join Arena`
                   : "Enter your information to get started"
@@ -138,35 +138,35 @@ const Register: React.FC = () => {
             </CardHeader>
             
             <form onSubmit={handleSubmit}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
+              <CardContent className="space-y-2 py-1">
+                <div className="space-y-1">
+                  <Label htmlFor="name" className="text-xs">Full Name</Label>
                   <Input
                     id="name"
                     name="name"
                     placeholder="Enter your full name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="input-effect"
+                    className="input-effect h-8"
                     required
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="username" className="text-xs">Username</Label>
                   <Input
                     id="username"
                     name="username"
                     placeholder="Choose a username"
                     value={formData.username}
                     onChange={handleChange}
-                    className="input-effect"
+                    className="input-effect h-8"
                     required
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="email" className="text-xs">Email</Label>
                   <Input
                     id="email"
                     name="email"
@@ -174,13 +174,13 @@ const Register: React.FC = () => {
                     placeholder="Enter your email"
                     value={formData.email}
                     onChange={handleChange}
-                    className="input-effect"
+                    className="input-effect h-8"
                     required
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="password" className="text-xs">Password</Label>
                   <Input
                     id="password"
                     name="password"
@@ -188,13 +188,13 @@ const Register: React.FC = () => {
                     placeholder="Create a password"
                     value={formData.password}
                     onChange={handleChange}
-                    className="input-effect"
+                    className="input-effect h-8"
                     required
                   />
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <div className="space-y-1">
+                  <Label htmlFor="confirmPassword" className="text-xs">Confirm Password</Label>
                   <Input
                     id="confirmPassword"
                     name="confirmPassword"
@@ -202,22 +202,22 @@ const Register: React.FC = () => {
                     placeholder="Confirm your password"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className="input-effect"
+                    className="input-effect h-8"
                     required
                   />
                 </div>
               </CardContent>
               
-              <CardFooter className="flex flex-col space-y-4">
+              <CardFooter className="flex flex-col space-y-2 py-3">
                 <Button 
                   type="submit" 
-                  className="w-full"
+                  className="w-full h-8"
                   disabled={isLoading}
                 >
                   {isLoading ? 'Creating account...' : 'Create account'}
                 </Button>
                 
-                <div className="text-center text-sm text-muted-foreground">
+                <div className="text-center text-xs text-muted-foreground">
                   Already have an account?{' '}
                   <Link to="/login" className="text-primary hover:underline">
                     Sign in
