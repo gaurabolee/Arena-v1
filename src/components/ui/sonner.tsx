@@ -10,6 +10,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      duration={3000} // 3 seconds
+      closeButton={false} // Remove close button from notifications
+      richColors={false} // Disable rich colors for a simpler look
+      expand={false} // Don't expand notifications
+      position="bottom-center" // Position at bottom center
       toastOptions={{
         classNames: {
           toast:
@@ -19,6 +24,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
             "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton:
             "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          success: "group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border",
+          error: "group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border",
+          info: "group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border",
+          warning: "group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border",
         },
       }}
       {...props}

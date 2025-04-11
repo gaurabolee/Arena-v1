@@ -40,7 +40,11 @@ const Login: React.FC = () => {
       const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
       console.log('User logged in:', userCredential.user);
 
-      toast.success('Logged in successfully');
+      toast('Welcome back', {
+        description: 'You have successfully logged in',
+        duration: 3000,
+      });
+      
       navigate('/home');
       
     } catch (err: any) {

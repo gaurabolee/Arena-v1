@@ -1,16 +1,26 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { UserIcon, Linkedin, Facebook, Instagram, Youtube, Check } from "lucide-react";
+import { UserIcon, Linkedin, Facebook, Instagram, Youtube, Check, Twitter } from "lucide-react";
 import Logo from "@/components/Logo";
 import { useParams } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot, query, collection, where, getDocs, limit } from "firebase/firestore";
 import Navbar from "@/components/Navbar";
-import TransitionWrapper from "@/components/TransitionWrapper";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { ExtendedUser, VerificationStatus } from "@/context/AuthContext";
+
+// Declare global window property
+declare global {
+  interface Window {
+    _verifiedProfiles: {
+      [username: string]: boolean;
+    } | undefined;
+  }
+}
 
 interface SocialLinks {
   [key: string]: string;
@@ -43,167 +53,263 @@ const XIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
 
 export default function PublicProfile() {
   const { username } = useParams();
-  const { findUserByUsername } = useAuth();
   const [profileUser, setProfileUser] = useState<ExtendedUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastKnownVerification, setLastKnownVerification] = useState<{[key: string]: VerificationStatus} | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
+  const lastKnownVerificationRef = useRef(lastKnownVerification);
+  // Add a flag to track if localStorage has been checked
+  const [localStorageChecked, setLocalStorageChecked] = useState(false);
 
-  // Helper function to check if user has any verified accounts
-  const hasVerifiedAccounts = (user: ExtendedUser) => {
-    return Object.values(user.verificationStatus || {}).some(
-      (status): status is VerificationStatus => 
-        status && typeof status === 'object' && status.status === 'verified'
-    );
-  };
-
+  // For extreme persistence, store verification in a global property as well
   useEffect(() => {
-    const loadUser = async () => {
-      if (username) {
-        const user = await findUserByUsername(username);
-        setProfileUser(user);
+    // Check if the window global cache already has verification for this user
+    if (username && window._verifiedProfiles && window._verifiedProfiles[username]) {
+      console.log("Using global window cache for verification status");
+      setIsVerified(true);
+    }
+  }, [username]);
+
+  // Setup global object to store verified profiles across renders
+  useEffect(() => {
+    if (!window._verifiedProfiles) {
+      window._verifiedProfiles = {};
+    }
+  }, []);
+
+  // When verification status changes, update global cache
+  useEffect(() => {
+    if (isVerified && username) {
+      console.log("Storing verification in global window cache");
+      window._verifiedProfiles = window._verifiedProfiles || {};
+      window._verifiedProfiles[username] = true;
+    }
+  }, [isVerified, username]);
+
+  // Keep ref in sync with state
+  useEffect(() => { 
+    lastKnownVerificationRef.current = lastKnownVerification; 
+  }, [lastKnownVerification]);
+
+  // Add tab visibility handler to restore verification when switching back to tab
+  useEffect(() => {
+    if (!username) return;
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("Tab became visible, restoring verification status");
+        const storedVerification = localStorage.getItem(`verified_profile_${username}`);
+        if (storedVerification) {
+          try {
+            const parsed = JSON.parse(storedVerification);
+            const hasVerifiedStatus = Object.values(parsed).some(
+              (status: any) => status && typeof status === 'object' && 
+                            'status' in status && status.status === 'verified'
+            );
+            
+            if (hasVerifiedStatus) {
+              console.log("Found verification in localStorage, restoring verification badge");
+              setLastKnownVerification(parsed);
+              setIsVerified(true);
+            }
+          } catch (error) {
+            console.error("Error parsing stored verification:", error);
+          }
+        }
+      }
+    };
+    
+    // Run once on mount to ensure we have verification status
+    handleVisibilityChange();
+    
+    // Add event listener for tab visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [username]);
+
+  // Load any previously stored verification data from localStorage on component mount
+  useEffect(() => {
+    if (!username) return;
+    
+    try {
+      console.log("CHECKING LOCALSTORAGE FOR:", username);
+      const storedVerification = localStorage.getItem(`verified_profile_${username}`);
+      
+      if (storedVerification) {
+        console.log(`Found stored verification for ${username}:`, storedVerification);
+        const parsed = JSON.parse(storedVerification);
+        setLastKnownVerification(parsed);
+        
+        // Pre-set verification status based on localStorage
+        const hasVerified = Object.values(parsed).some(
+          (status: any) => status && typeof status === 'object' && 
+                         'status' in status && status.status === 'verified'
+        );
+        
+        if (hasVerified) {
+          console.log("PRE-SETTING VERIFIED STATUS TO TRUE FROM CACHE");
+          setIsVerified(true);
+        }
+      } else {
+        console.log("No stored verification found in localStorage");
+      }
+    } catch (error) {
+      console.error("Error loading cached verification:", error);
+    } finally {
+      setLocalStorageChecked(true);
+    }
+  }, [username]);
+
+  // Wait for localStorage check before setting up Firestore listener
+  useEffect(() => {
+    if (!username || !localStorageChecked) {
+      console.log("Waiting for localStorage check to complete...");
+      return;
+    }
+    
+    console.log("localStorage check complete, setting up Firestore listener");
+    setLoading(true);
+
+    // Query Firestore once to find the user ID by username
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("username", "==", username), limit(1));
+
+    let unsubscribe: (() => void) | undefined;
+
+    const getUserAndListen = async () => {
+      try {
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          console.log("No user found with username:", username);
+          setProfileUser(null);
+          setLoading(false);
+          return;
+        }
+
+        const userDoc = querySnapshot.docs[0];
+        const userId = userDoc.id;
+
+        // Now set up the real-time listener using the user ID
+        const userDocRef = doc(db, "users", userId);
+        unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            console.log("Real-time update for user:", username);
+            console.log("Verification status in Firestore:", userData.verificationStatus);
+            
+            // Combine user data with UID (useful for consistency)
+            const updatedUser = { ...userData, uid: userId } as ExtendedUser;
+            
+            // Compute verification state using the ref instead of state
+            const cacheVerified = lastKnownVerificationRef.current ? 
+              Object.values(lastKnownVerificationRef.current).some(
+                status => status && typeof status === 'object' && 'status' in status && status.status === 'verified'
+              ) : false;
+            
+            const firestoreVerified = Object.values(userData.verificationStatus || {}).some(
+              status => status && typeof status === 'object' && 'status' in status && status.status === 'verified'
+            );
+            
+            const verified = firestoreVerified || cacheVerified;
+            
+            if (firestoreVerified && !cacheVerified) {
+              console.log("Found verified status in Firestore, saving to localStorage");
+              // Save to both localStorage and sessionStorage for redundancy
+              localStorage.setItem(`verified_profile_${username}`, JSON.stringify(userData.verificationStatus));
+              sessionStorage.setItem(`verified_profile_${username}`, JSON.stringify(userData.verificationStatus));
+              setLastKnownVerification(userData.verificationStatus);
+            }
+            // If localStorage has verification but Firestore doesn't, inject the verified status
+            else if (!firestoreVerified && cacheVerified && lastKnownVerificationRef.current) {
+              console.log("Using cached verification, not found in Firestore");
+              
+              // Inject cached verification data into user object for consistent display
+              if (!updatedUser.verificationStatus) {
+                updatedUser.verificationStatus = {};
+              }
+              
+              // Add verified platforms from cache to ensure icons display properly
+              Object.entries(lastKnownVerificationRef.current).forEach(([platform, status]) => {
+                if (status && typeof status === 'object' && 'status' in status && status.status === 'verified') {
+                  if (!updatedUser.verificationStatus![platform] || 
+                      updatedUser.verificationStatus![platform].status !== 'verified') {
+                    console.log(`Adding verified status for ${platform} from cache`);
+                    updatedUser.verificationStatus![platform] = status;
+                  }
+                }
+              });
+            }
+            
+            setIsVerified(verified);
+            
+            // Set the profile user with potentially modified verification data
+            setProfileUser(updatedUser);
+          } else {
+            console.log("User document deleted for:", username);
+            setProfileUser(null); 
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("Error listening to user document:", error);
+          setProfileUser(null);
+          setLoading(false);
+        });
+
+      } catch (error) {
+        console.error("Error fetching user ID by username:", error);
+        setProfileUser(null);
         setLoading(false);
       }
     };
-    loadUser();
-  }, [username, findUserByUsername]);
 
-  // If loading, show a loading state
-  if (loading) {
+    getUserAndListen();
+
+    return () => {
+      if (unsubscribe) {
+        console.log("Unsubscribing from user listener:", username);
+        unsubscribe();
+      }
+    };
+  }, [username, localStorageChecked]); // Add localStorageChecked back to the dependency array
+
+  // If loading, show a loading state (WITH Navbar)
+  if (loading && !isVerified) {
     return (
       <>
         <Navbar />
-        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
+        <div className="min-h-screen pt-20 pb-10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <h1 className="text-2xl font-semibold mb-4">Loading profile...</h1>
           </div>
-        </TransitionWrapper>
+        </div>
       </>
     );
   }
 
-  // If no user is found, show a message
-  if (!profileUser) {
+  // If no user is found and no verification, show a message (WITH Navbar)
+  if (!profileUser && !isVerified) {
     return (
       <>
         <Navbar />
-        <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
+        <div className="min-h-screen pt-20 pb-10">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <h1 className="text-2xl font-semibold mb-4">Profile Not Found</h1>
             <p>The user you're looking for doesn't exist.</p>
           </div>
-        </TransitionWrapper>
+        </div>
       </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container max-w-2xl mx-auto py-8 space-y-8">
-        {/* Arena Logo */}
-        <div className="flex items-center gap-2.5">
-          <Logo size={32} angle={135} />
-          <span className="text-xl font-medium">Arena</span>
-        </div>
-
-        {/* Profile Card */}
-        <Card className="rounded-xl border bg-card">
-          <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-              <div className="relative">
-                <Avatar className="h-20 w-20">
-                  <AvatarImage 
-                    src={profileUser.photoURL || undefined} 
-                    alt={profileUser.name}
-                    className="object-cover"
-                  />
-                  <AvatarFallback>
-                    {profileUser.name ? profileUser.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-              
-              <div className="text-center sm:text-left">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-2xl font-medium">{profileUser.name}</CardTitle>
-                  {profileUser && hasVerifiedAccounts(profileUser) && (
-                    <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
-                      <Check className="h-3 w-3 mr-1" />
-                      Verified
-                    </Badge>
-                  )}
-                </div>
-                <CardDescription>@{profileUser.username}</CardDescription>
-                <p className="mt-3 text-muted-foreground">
-                  {profileUser.bio || 'Tell us about yourself...'}
-                </p>
-              </div>
-            </div>
-          </CardHeader>
-          
-          <CardContent>
-            <div className="space-y-4">
-              {/* Social Verification Section */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <Label className="text-sm font-medium">Verified Accounts</Label>
-                  </div>
-                </div>
-                
-                <div className="grid grid-cols-6 gap-3">
-                  {Object.entries(profileUser.socialLinks || {}).map(([name, value]) => {
-                    const Icon = name === 'twitter' ? XIcon : name === 'tiktok' ? TikTokIcon : 
-                      name === 'linkedin' ? Linkedin : 
-                      name === 'facebook' ? Facebook : 
-                      name === 'instagram' ? Instagram : 
-                      name === 'youtube' ? Youtube : UserIcon;
-                    
-                    const status = profileUser?.verificationStatus?.[name]?.status;
-                    
-                    // Only show verified accounts
-                    if (status !== 'verified') return null;
-                    
-                    return (
-                      <div key={name} className="flex flex-col items-center gap-2">
-                        <a
-                          href={value}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block"
-                        >
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-12 w-12 rounded-full relative hover:bg-gray-100 transition-colors"
-                          >
-                            <Icon className="h-5 w-5" />
-                            <div className="absolute -top-0.5 -right-0.5">
-                              <Check className="h-3.5 w-3.5 text-black stroke-[2.5px]" />
-                            </div>
-                          </Button>
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tagline and CTA */}
-        <div className="flex flex-col items-center gap-6">
-          <p className="text-base text-muted-foreground">
-            Every text does not have to be private
-          </p>
-          <Button 
-            size="lg" 
-            className="w-full sm:w-auto px-8"
-            onClick={() => window.location.href = "/register"}
-          >
-            Join Arena
-          </Button>
+    <>
+      <Navbar />
+      <div className="container mx-auto px-4 pt-32 pb-8 max-w-4xl">
+        <div className="h-64 border border-red-500 bg-red-100 p-4">
+          Simple Placeholder Content
         </div>
       </div>
-    </div>
+    </>
   );
 } 

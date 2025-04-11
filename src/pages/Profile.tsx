@@ -4,12 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, SocialLinks as ContextSocialLinks, VerificationStatus as ContextVerificationStatus, ExtendedUser } from '@/context/AuthContext';
+import { updateProfile as updateFirebaseAuthProfile } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { User as UserIcon, Linkedin, Twitter, Facebook, Instagram, Copy, Mail, Share, Youtube, Shield, Settings, Camera, CopyIcon, CheckIcon, Loader2, MoreVertical, ImagePlus, Edit3, Trash2 } from 'lucide-react';
+import { User as UserIcon, Linkedin, Twitter, Facebook, Instagram, Copy, Mail, Share, Youtube, Shield, Settings, Camera, CopyIcon, CheckIcon, Loader2, MoreVertical, ImagePlus, Edit3, Trash2, Check } from 'lucide-react';
 import TransitionWrapper from '@/components/TransitionWrapper';
 import Navbar from '@/components/Navbar';
 import DebateCard from '@/components/DebateCard';
@@ -31,32 +33,17 @@ import { Slider } from "@/components/ui/slider";
 import heic2any from 'heic2any';
 import { createWorker, Worker } from 'tesseract.js';
 import Logo from '@/components/Logo';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Badge } from "@/components/ui/badge";
 
-interface SocialLinks {
-  linkedin: string;
-  twitter: string;
-  facebook: string;
-  instagram: string;
-  youtube: string;
-  tiktok: string;
-}
-
-interface VerificationStatus {
-  status: 'unverified' | 'pending' | 'verified' | 'failed';
-  code?: string;
-  timestamp?: number;
-}
-
 interface SocialVerification {
-  linkedin: VerificationStatus;
-  twitter: VerificationStatus;
-  facebook: VerificationStatus;
-  instagram: VerificationStatus;
-  youtube: VerificationStatus;
-  tiktok: VerificationStatus;
+  linkedin: ContextVerificationStatus;
+  twitter: ContextVerificationStatus;
+  facebook: ContextVerificationStatus;
+  instagram: ContextVerificationStatus;
+  youtube: ContextVerificationStatus;
+  tiktok: ContextVerificationStatus;
 }
 
 interface ImageEditorState {
@@ -90,9 +77,8 @@ const MOCK_DEBATE_HISTORY = [
 
 interface ProfileProps {}
 
-// Function to generate random verification code
 const generateVerificationCode = () => {
-  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar looking characters
+  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) {
     code += characters.charAt(Math.floor(Math.random() * characters.length));
@@ -101,23 +87,24 @@ const generateVerificationCode = () => {
 };
 
 const generateVerificationSymbol = () => {
-  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Removed similar looking letters I, O
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
   const randomIndex = Math.floor(Math.random() * letters.length);
   return letters[randomIndex];
 };
 
 const Profile: React.FC<ProfileProps> = () => {
-  const { currentUser, logout, updateProfile, isEditing, setIsEditing, makeAdmin } = useAuth();
+  const { currentUser, logout, updateProfile: updateContextProfile, isEditing, setIsEditing, makeAdmin } = useAuth();
   const navigate = useNavigate();
   const { username } = useParams();
   const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    bio: '',
+    name: currentUser?.name ?? '',
+    username: currentUser?.username ?? '',
+    bio: currentUser?.bio ?? '',
+    photoURL: currentUser?.photoURL ?? '',
   });
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [showValidateDialog, setShowValidateDialog] = useState(false);
-  const [socialLinks, setSocialLinks] = useState<SocialLinks>({
+  const [socialLinks, setSocialLinks] = useState<ContextSocialLinks>({
     linkedin: currentUser?.socialLinks?.linkedin ?? '',
     twitter: currentUser?.socialLinks?.twitter ?? '',
     facebook: currentUser?.socialLinks?.facebook ?? '',
@@ -130,14 +117,18 @@ const Profile: React.FC<ProfileProps> = () => {
   const [photoURL, setPhotoURL] = useState<string>(currentUser?.photoURL || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState<keyof SocialLinks | null>(null);
-  const [verificationStatus, setVerificationStatus] = useState<SocialVerification>({
-    linkedin: { status: 'unverified' },
-    twitter: { status: 'unverified' },
-    facebook: { status: 'unverified' },
-    instagram: { status: 'unverified' },
-    youtube: { status: 'unverified' },
-    tiktok: { status: 'unverified' }
+  const [selectedPlatform, setSelectedPlatform] = useState<keyof ContextSocialLinks | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<SocialVerification>(() => {
+    const savedStatus = localStorage.getItem('userVerificationStatus');
+    const initialStatus = savedStatus ? JSON.parse(savedStatus) : {};
+    return {
+      linkedin: initialStatus.linkedin || { status: 'unverified' },
+      twitter: initialStatus.twitter || { status: 'unverified' },
+      facebook: initialStatus.facebook || { status: 'unverified' },
+      instagram: initialStatus.instagram || { status: 'unverified' },
+      youtube: initialStatus.youtube || { status: 'unverified' },
+      tiktok: initialStatus.tiktok || { status: 'unverified' }
+    };
   });
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationStep, setVerificationStep] = useState<'code' | 'profile'>('code');
@@ -158,18 +149,114 @@ const Profile: React.FC<ProfileProps> = () => {
   const [tempImage, setTempImage] = useState<File | null>(null);
   const editorRef = useRef<AvatarEditor>(null);
 
-  // Determine if we're viewing our own profile or someone else's
   const isOwnProfile = !username || (currentUser && currentUser.username === username);
 
   useEffect(() => {
-    console.log('Profile component loaded. Current user:', currentUser);
-    console.log('Open edit mode:', isEditing);
+    console.log('Profile component mounted/updated. Current user:', currentUser);
     if (currentUser) {
       setFormData({
-        name: currentUser.name,
-        username: currentUser.username,
-        bio: currentUser.bio || '',
+        name: currentUser.name ?? '',
+        username: currentUser.username ?? '',
+        bio: currentUser.bio ?? '',
+        photoURL: currentUser.photoURL ?? '',
       });
+  
+      // Handle social links loading
+      let linksToSet = currentUser.socialLinks || {};
+      if (!linksToSet || Object.keys(linksToSet).length === 0) {
+          const savedSocialLinks = localStorage.getItem('userSocialLinks');
+          if (savedSocialLinks) {
+              try {
+                  console.log('Loading social links from localStorage');
+                  const parsedLinks = JSON.parse(savedSocialLinks);
+                   linksToSet = {
+                     linkedin: parsedLinks.linkedin,
+                     twitter: parsedLinks.twitter,
+                     facebook: parsedLinks.facebook,
+                     instagram: parsedLinks.instagram,
+                     youtube: parsedLinks.youtube,
+                     tiktok: parsedLinks.tiktok
+                   };
+              } catch (error) {
+                  console.error('Error parsing social links from localStorage:', error);
+                  linksToSet = {};
+              }
+          }
+      }
+      setSocialLinks({
+          linkedin: linksToSet.linkedin ?? '',
+          twitter: linksToSet.twitter ?? '',
+          facebook: linksToSet.facebook ?? '',
+          instagram: linksToSet.instagram ?? '',
+          youtube: linksToSet.youtube ?? '',
+          tiktok: linksToSet.tiktok ?? ''
+      });
+  
+      // IMPROVED VERIFICATION STATUS LOADING LOGIC
+      let statusToSet: SocialVerification = {
+          linkedin: { status: 'unverified' },
+          twitter: { status: 'unverified' },
+          facebook: { status: 'unverified' },
+          instagram: { status: 'unverified' },
+          youtube: { status: 'unverified' },
+          tiktok: { status: 'unverified' }
+      };
+  
+      // Try to get verification status from localStorage first to ensure we
+      // have the most recent status that was seen by the user
+      const savedVerificationStatus = localStorage.getItem('userVerificationStatus');
+      if (savedVerificationStatus) {
+          try {
+              console.log('Loading verification status from localStorage first');
+              const parsedStatus = JSON.parse(savedVerificationStatus);
+              
+              if (parsedStatus && Object.keys(parsedStatus).length > 0) {
+                  statusToSet = {
+                      linkedin: parsedStatus.linkedin || { status: 'unverified' },
+                      twitter: parsedStatus.twitter || { status: 'unverified' },
+                      facebook: parsedStatus.facebook || { status: 'unverified' },
+                      instagram: parsedStatus.instagram || { status: 'unverified' },
+                      youtube: parsedStatus.youtube || { status: 'unverified' },
+                      tiktok: parsedStatus.tiktok || { status: 'unverified' }
+                  };
+              }
+          } catch (error) {
+              console.error('Error parsing verification status from localStorage:', error);
+          }
+      }
+  
+      // Then check if currentUser has verification status and update if needed
+      const userStatus = currentUser.verificationStatus;  
+      if (userStatus && Object.keys(userStatus).length > 0) {
+          console.log('Found verification status in currentUser:', userStatus);
+          
+          // Merge with what we loaded from localStorage, preferring Firestore data for any conflicts
+          const mergedStatus = {
+              linkedin: userStatus.linkedin || statusToSet.linkedin,
+              twitter: userStatus.twitter || statusToSet.twitter,
+              facebook: userStatus.facebook || statusToSet.facebook,
+              instagram: userStatus.instagram || statusToSet.instagram,
+              youtube: userStatus.youtube || statusToSet.youtube,
+              tiktok: userStatus.tiktok || statusToSet.tiktok
+          };
+          
+          statusToSet = mergedStatus;
+          
+          // Update localStorage with the merged status
+          localStorage.setItem('userVerificationStatus', JSON.stringify(statusToSet));
+          console.log('Updated localStorage with merged verification status');
+      }
+      
+      console.log('Setting verification status in component:', statusToSet);
+      setVerificationStatus(statusToSet);
+  
+    } else {
+        setFormData({ name: '', username: '', bio: '', photoURL: '' });
+        setSocialLinks({ linkedin: '', twitter: '', facebook: '', instagram: '', youtube: '', tiktok: '' });
+        setVerificationStatus({
+            linkedin: { status: 'unverified' }, twitter: { status: 'unverified' }, facebook: { status: 'unverified' },
+            instagram: { status: 'unverified' }, youtube: { status: 'unverified' }, tiktok: { status: 'unverified' }
+        });
     }
   }, [currentUser]);
 
@@ -185,17 +272,6 @@ const Profile: React.FC<ProfileProps> = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  useEffect(() => {
-    const savedStatus = localStorage.getItem('socialVerificationStatus');
-    if (savedStatus) {
-      setVerificationStatus(JSON.parse(savedStatus));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('socialVerificationStatus', JSON.stringify(verificationStatus));
-  }, [verificationStatus]);
 
   useEffect(() => {
     if (currentUser?.photoURL) {
@@ -214,17 +290,57 @@ const Profile: React.FC<ProfileProps> = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = async () => {
+  const handleSaveProfile = async () => {
+    if (!currentUser) return;
     try {
-      await updateProfile({ 
-        ...formData,
-        photoURL // Include photoURL in profile update
-      });
-      toast.success('Profile updated successfully');
+      const dataToUpdate: Partial<ExtendedUser> = {
+        name: formData.name,
+        username: formData.username,
+        bio: formData.bio,
+        socialLinks: socialLinks
+      };
+      await updateContextProfile(dataToUpdate);
       setIsEditing(false);
-    } catch (error) {
-      toast.error('Failed to update profile');
-      console.error(error);
+      toast.success('Profile updated successfully!');
+    } catch (error: any) {
+      toast.error('Failed to update profile: ' + error.message);
+      console.error('Profile update error:', error);
+    }
+  };
+
+  const handleImageSave = async () => {
+    if (editorRef.current && currentUser && auth.currentUser) {
+      const canvas = editorRef.current.getImageScaledToCanvas();
+      const newPhotoURL = canvas.toDataURL();
+      setPhotoURL(newPhotoURL);
+
+      try {
+        await updateFirebaseAuthProfile(auth.currentUser, { photoURL: newPhotoURL });
+        console.log('Firebase Auth profile picture updated.');
+
+        await updateContextProfile({ photoURL: newPhotoURL });
+        console.log('Firestore and context state updated with new photoURL.');
+
+        toast.success("Profile picture updated.");
+        setImageEditor({ ...imageEditor, isOpen: false });
+        setTempImage(null);
+
+      } catch (error: any) {
+         console.error("Error updating profile picture:", error);
+         toast.error("Failed to update profile picture: " + error.message);
+         setPhotoURL(currentUser.photoURL || '');
+      }
+    }
+  };
+
+  const handleSaveSocialLinks = async () => {
+    if (!currentUser) return;
+    try {
+      await updateContextProfile({ socialLinks: socialLinks });
+      toast.success('Social links updated!');
+    } catch (error: any) {
+      toast.error('Failed to update social links: ' + error.message);
+      console.error('Error saving social links:', error);
     }
   };
 
@@ -268,17 +384,14 @@ const Profile: React.FC<ProfileProps> = () => {
   const handleImageEdit = async (file: File) => {
     try {
       console.log('handleImageEdit called with file:', file);
-      // Reset states
       setTempImage(null);
       setImageEditor(prev => ({ ...prev, isOpen: false }));
 
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         toast.error('Image size should be less than 5MB');
         return;
       }
 
-      // Validate file type
       const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/heic'];
       if (!validTypes.includes(file.type)) {
         toast.error('Please upload a valid image file (JPEG, PNG, HEIC)');
@@ -287,7 +400,6 @@ const Profile: React.FC<ProfileProps> = () => {
 
       let processedFile = file;
       
-      // Convert HEIC to JPEG if needed
       if (file.type === 'image/heic') {
         try {
           console.log('Converting HEIC to JPEG');
@@ -296,7 +408,6 @@ const Profile: React.FC<ProfileProps> = () => {
             toType: 'image/jpeg',
             quality: 0.8
           });
-          // Handle both single blob and array of blobs
           const processedBlob = Array.isArray(blob) ? blob[0] : blob;
           processedFile = new File([processedBlob], file.name.replace('.heic', '.jpg'), { type: 'image/jpeg' });
         } catch (error) {
@@ -306,16 +417,13 @@ const Profile: React.FC<ProfileProps> = () => {
         }
       }
 
-      // Validate processed file
       if (!processedFile || processedFile.size === 0) {
         toast.error('Invalid image file. Please try again.');
         return;
       }
 
-      // Create object URL for preview
       const objectUrl = URL.createObjectURL(processedFile);
       
-      // Set states in sequence
       console.log('Setting tempImage and opening image editor');
       setTempImage(processedFile);
       setImageEditor(prev => ({ 
@@ -324,12 +432,10 @@ const Profile: React.FC<ProfileProps> = () => {
         scale: 1
       }));
 
-      // Cleanup object URL when component unmounts or when new image is selected
       return () => URL.revokeObjectURL(objectUrl);
     } catch (error) {
       console.error('Error processing image:', error);
       toast.error('Failed to process image. Please try again.');
-      // Reset states on error
       setTempImage(null);
       setImageEditor(prev => ({ ...prev, isOpen: false }));
     }
@@ -337,27 +443,21 @@ const Profile: React.FC<ProfileProps> = () => {
 
   const handleImageDelete = async () => {
     try {
-      // Show confirmation dialog
       if (!window.confirm('Are you sure you want to remove your profile photo?')) {
         return;
       }
 
-      // Create updated user object with removed photo
       const updatedUser = {
         ...currentUser,
         photoURL: null
       };
 
-      // Update profile through auth context
-      await updateProfile(updatedUser);
+      await updateContextProfile(updatedUser);
 
-      // Update local state
       setPhotoURL('');
 
-      // Update localStorage directly to ensure persistence
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
-      // Force refresh of components
       window.dispatchEvent(new Event('storage'));
 
       toast.success('Profile photo removed');
@@ -386,7 +486,6 @@ const Profile: React.FC<ProfileProps> = () => {
         return;
       }
 
-      // Convert to blob with error handling and retry logic
       const blob = await new Promise<Blob | null>((resolve, reject) => {
         let attempts = 0;
         const maxAttempts = 3;
@@ -418,7 +517,6 @@ const Profile: React.FC<ProfileProps> = () => {
         return;
       }
 
-      // Convert blob to base64 with error handling
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
@@ -426,7 +524,6 @@ const Profile: React.FC<ProfileProps> = () => {
         reader.readAsDataURL(blob);
       });
 
-      // Update profile with error handling and retry logic
       let attempts = 0;
       const maxAttempts = 3;
       let success = false;
@@ -434,12 +531,11 @@ const Profile: React.FC<ProfileProps> = () => {
       while (!success && attempts < maxAttempts) {
         try {
           console.log('Updating profile with new photo');
-          await updateProfile({
+          await updateContextProfile({
             ...currentUser,
             photoURL: base64
           });
 
-          // Update local state
           setPhotoURL(base64);
           setImageEditor(prev => ({ ...prev, isOpen: false }));
           setTempImage(null);
@@ -453,7 +549,6 @@ const Profile: React.FC<ProfileProps> = () => {
             toast.dismiss(loadingToast);
             toast.error('Failed to update profile photo after multiple attempts. Please try again.');
           } else {
-            // Wait before retrying
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
@@ -461,7 +556,6 @@ const Profile: React.FC<ProfileProps> = () => {
     } catch (error) {
       console.error('Error saving image:', error);
       toast.error('Failed to save image. Please try again.');
-      // Reset states on error
       setTempImage(null);
       setImageEditor(prev => ({ ...prev, isOpen: false }));
     }
@@ -479,35 +573,44 @@ const Profile: React.FC<ProfileProps> = () => {
     </svg>
   );
 
-  const renderSocialButtons = () => {
-    const socialIcons = [
-      { name: 'linkedin', Icon: Linkedin, label: 'LinkedIn', url: socialLinks.linkedin },
-      { name: 'twitter', Icon: XIcon, label: 'X', url: socialLinks.twitter },
-      { name: 'facebook', Icon: Facebook, label: 'Facebook', url: socialLinks.facebook },
-      { name: 'instagram', Icon: Instagram, label: 'Instagram', url: socialLinks.instagram },
-      { name: 'youtube', Icon: Youtube, label: 'YouTube', url: socialLinks.youtube },
-      { name: 'tiktok', Icon: TikTokIcon, label: 'TikTok', url: socialLinks.tiktok }
-    ];
+  const socialIcons = [
+    { name: 'linkedin', Icon: Linkedin, label: 'LinkedIn' },
+    { name: 'twitter', Icon: Twitter, label: 'Twitter/X' },
+    { name: 'facebook', Icon: Facebook, label: 'Facebook' },
+    { name: 'instagram', Icon: Instagram, label: 'Instagram' },
+    { name: 'youtube', Icon: Youtube, label: 'YouTube' },
+    { name: 'tiktok', Icon: Shield, label: 'TikTok' },
+  ] as const;
 
+  const renderSocialButtons = () => {
     return (
       <div className="flex flex-wrap gap-2 mt-3">
-        {socialIcons.map(({ name, Icon, label, url }) => {
-          const status = verificationStatus[name as keyof SocialLinks].status;
+        {socialIcons.map(({ name, Icon, label }) => {
+          const platformKey = name;
+          const statusInfo: ContextVerificationStatus = verificationStatus[platformKey] || { status: 'unverified' };
+          const status = statusInfo.status;
+          const currentLink = socialLinks[platformKey] || '';
+          const isPending = status === 'pending';
+          const isVerified = status === 'verified';
+
           return (
-            <div key={name} className="flex items-center">
-              <Button 
-                variant="outline" 
-                size="icon"
+            <div key={platformKey} className="flex items-center">
+              <Button
+                variant="ghost"
+                size="sm"
                 className={cn(
-                  "h-9 w-9 rounded-full",
-                  status === 'verified' && "text-green-600 hover:text-green-700",
-                  status === 'pending' && "text-yellow-500",
-                  status === 'failed' && "text-red-500",
-                  status === 'unverified' && "text-muted-foreground hover:text-foreground"
+                  "flex items-center gap-2 relative",
+                  isVerified && "text-green-500 hover:text-green-600",
+                  isPending && "text-yellow-500 hover:text-yellow-600",
+                  !isVerified && !isPending && "text-muted-foreground hover:text-foreground"
                 )}
-                onClick={() => handleVerificationStart(name as keyof SocialLinks)}
+                onClick={() => isVerified ? window.open(currentLink, '_blank') : handleVerificationStart(platformKey)}
+                disabled={isPending}
               >
                 <Icon className="h-4 w-4" />
+                <span>{label}</span>
+                {isVerified && <CheckIcon className="h-3 w-3 text-green-500 absolute -top-1 -right-1 bg-background rounded-full p-0.5" />}
+                {isPending && <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />}
               </Button>
             </div>
           );
@@ -520,39 +623,83 @@ const Profile: React.FC<ProfileProps> = () => {
     setShowSettings(!showSettings);
   };
 
-  const handleVerificationStart = (platform: keyof SocialLinks) => {
+  const handleVerificationStart = (platform: keyof ContextSocialLinks) => {
     const symbol = generateVerificationSymbol();
-    setVerificationStatus(prev => ({
-      ...prev,
-      [platform]: { status: 'unverified', code: symbol, timestamp: Date.now() }
-    }));
-    setSelectedPlatform(platform);
-    setShowValidateDialog(true);
-  };
-
-  const validateProfileUrl = (platform: keyof SocialLinks, url: string): boolean => {
-    if (!url) return false;
     
-    const urlPatterns = {
-      twitter: /^https?:\/\/(www\.)?(twitter|x)\.com\/[a-zA-Z0-9_]+\/?$/,
-      linkedin: /^https?:\/\/(www\.)?linkedin\.com\/(in|company)\/[a-zA-Z0-9_-]+\/?$/,
-      facebook: /^https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9_.]+\/?$/,
-      instagram: /^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?$/,
-      youtube: /^https?:\/\/(www\.)?youtube\.com\/(c|channel|user)\/[a-zA-Z0-9_-]+\/?$/,
-      tiktok: /^https?:\/\/(www\.)?tiktok\.com\/@[a-zA-Z0-9_.]+\/?$/
+    // Create the updated verification status
+    const updatedStatus = {
+      ...verificationStatus,
+      [platform]: { 
+        ...verificationStatus[platform], 
+        status: 'pending', 
+        code: symbol,
+        timestamp: Date.now()
+      }
     };
 
-    return urlPatterns[platform]?.test(url) || false;
+    // Update component state
+    setVerificationStatus(updatedStatus);
+    
+    // Also update localStorage to ensure persistence across navigations
+    localStorage.setItem('userVerificationStatus', JSON.stringify(updatedStatus));
+    
+    // Set UI state for dialog
+    setSelectedPlatform(platform);
+    setShowValidateDialog(true);
+    setVerificationStep('code');
+    setVerificationScreenshots({ code: null, profile: null });
   };
 
-  const handleVerificationSubmit = async (platform: keyof SocialLinks, link: string) => {
+  const profileUrlPatterns: { [key in keyof ContextSocialLinks]: RegExp } = {
+      twitter: /^https?:\/\/(www\.)?(twitter|x)\.com\/[a-zA-Z0-9_]+\/?$/,
+      linkedin: /^https?:\/\/(www\.)?linkedin\.com\/(in|pub|company)\/[a-zA-Z0-9_-]+\/?$/,
+      facebook: /^https?:\/\/(www\.)?facebook\.com\/[a-zA-Z0-9._-]+\/?$/,
+      instagram: /^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9._]+\/?$/,
+      youtube: /^https?:\/\/(www\.)?youtube\.com\/(user\/|channel\/|c\/)?[a-zA-Z0-9_-]+\/?$/,
+      tiktok: /^https?:\/\/(www\.)?tiktok\.com\/@?[a-zA-Z0-9._-]+\/?$/
+  };
+
+  const validateProfileUrl = (platform: keyof ContextSocialLinks, url: string): boolean => {
+    if (!url) return false;
+    const pattern = profileUrlPatterns[platform];
+    return pattern ? pattern.test(url) : false;
+  };
+
+  const syncVerificationStatusWithFirestore = async (statusToSync: SocialVerification) => {
+    if (!currentUser) return;
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userRef, { verificationStatus: statusToSync }, { merge: true });
+      console.log('Synced verification status with Firestore:', statusToSync);
+
+      localStorage.setItem('userVerificationStatus', JSON.stringify(statusToSync));
+
+      const contextUpdate: { [key: string]: ContextVerificationStatus } = {};
+      for (const key in statusToSync) {
+          if (Object.prototype.hasOwnProperty.call(statusToSync, key)) {
+              const platformKey = key as keyof SocialVerification;
+              contextUpdate[platformKey] = statusToSync[platformKey];
+          }
+      }
+      await updateContextProfile({ verificationStatus: contextUpdate });
+
+      setVerificationStatus(statusToSync);
+    } catch (error) {
+      console.error('Error syncing verification status with Firestore:', error);
+    }
+  };
+
+  const handleVerificationSubmit = async (platform: keyof ContextSocialLinks, link: string) => {
+    if (!currentUser) {
+      toast.error("User not logged in.");
+      return;
+    }
     if (!link || !validateProfileUrl(platform, link)) {
       toast.error('Please enter a valid profile URL');
       return;
     }
 
     try {
-      // Send verification request to admin
       await setDoc(doc(db, 'verificationRequests', `${currentUser.uid}_${platform}`), {
         userId: currentUser.uid,
         username: currentUser.username,
@@ -563,17 +710,17 @@ const Profile: React.FC<ProfileProps> = () => {
         status: 'pending'
       });
 
-      // Update local verification status
-      setVerificationStatus(prev => ({
-        ...prev,
+      const updatedStatus = {
+        ...verificationStatus,
         [platform]: {
           status: 'pending',
-          code: prev[platform].code,
+          code: verificationStatus[platform].code,
           timestamp: Date.now()
         }
-      }));
+      };
+      
+      await syncVerificationStatusWithFirestore(updatedStatus);
 
-      // Close dialog and show success message
       setShowValidateDialog(false);
       toast.success('Verification request sent! We will notify you once verified.');
 
@@ -583,21 +730,15 @@ const Profile: React.FC<ProfileProps> = () => {
     }
   };
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    toast.success('Verification code copied to clipboard');
+  const handleCopyCode = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Verification code copied!');
   };
 
   const handleMakeAdmin = async () => {
     if (currentUser) {
       try {
-        // Update user document in Firestore
-        const userRef = doc(db, 'users', currentUser.uid);
-        await setDoc(userRef, { isAdmin: true }, { merge: true });
-        
-        // Update local state
-        setCurrentUser(prev => prev ? { ...prev, isAdmin: true } : null);
-        
+        await updateContextProfile({ isAdmin: true });
         toast.success('You are now an admin!');
       } catch (error) {
         console.error('Error making user admin:', error);
@@ -613,14 +754,12 @@ const Profile: React.FC<ProfileProps> = () => {
       const userRef = doc(db, 'users', currentUser.uid);
       await setDoc(userRef, { isAdmin: true }, { merge: true });
       
-      // Update the current user object with admin status
       const updatedUser = {
         ...currentUser,
         isAdmin: true
       };
       
-      // Update the auth context
-      updateProfile(updatedUser);
+      await updateContextProfile(updatedUser);
       
       toast.success('You are now an admin!');
     } catch (error) {
@@ -647,155 +786,189 @@ const Profile: React.FC<ProfileProps> = () => {
   }
 
   return (
-    <>
+    <TransitionWrapper>
       <Navbar />
-      <TransitionWrapper animation="fade" className="min-h-screen pt-24 pb-10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <Card className="mb-8">
-            <CardHeader className="pb-4">
-              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                <div className="relative">
-                  <Avatar className="h-20 w-20">
-                    <AvatarImage 
-                      src={photoURL || undefined} 
-                      alt={currentUser.name}
-                      className="object-cover"
-                    />
-                    <AvatarFallback>
-                      {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
-                    </AvatarFallback>
-                  </Avatar>
-                </div>
-                
-                <div className="text-center sm:text-left">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-2xl font-medium mb-1">{formData.name}</CardTitle>
-                    {Object.values(verificationStatus).some(status => status.status === 'verified') && (
-                      <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
-                        <CheckIcon className="h-3 w-3 mr-1" />
-                        Verified
-                      </Badge>
-                    )}
-                  </div>
-                  <CardDescription>@{formData.username}</CardDescription>
-                  <p className="mt-3 text-muted-foreground">
-                    {formData.bio || 'Tell us about yourself...'}
-                  </p>
-                </div>
-                
-                <div className="mt-4 sm:mt-0 sm:ml-auto flex gap-2">
-                  <Button 
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    Edit Profile
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="h-9 w-9"
-                      >
-                        <Settings className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          toast.info('Change password coming soon');
-                        }}
-                      >
-                        Change Password
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={handleLogout}
-                      >
-                        Logout
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <Card className="mb-8">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+              <div className="relative">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage 
+                    src={photoURL || undefined} 
+                    alt={currentUser.name}
+                    className="object-cover"
+                  />
+                  <AvatarFallback>
+                    {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
+                  </AvatarFallback>
+                </Avatar>
               </div>
-            </CardHeader>
-            
-            <CardContent>
-              <div className="space-y-4">
+              
+              <div className="text-center sm:text-left">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-2xl font-medium mb-1">{formData.name}</CardTitle>
+                  {Object.values(verificationStatus).some(status => status.status === 'verified') && (
+                    <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
+                      <CheckIcon className="h-3 w-3 mr-1" />
+                      Verified
+                    </Badge>
+                  )}
+                </div>
+                <CardDescription>@{formData.username}</CardDescription>
+                <p className="mt-3 text-muted-foreground">
+                  {formData.bio || 'Tell us about yourself...'}
+                </p>
               </div>
-            </CardContent>
-          </Card>
+              
+              <div className="mt-4 sm:mt-0 sm:ml-auto flex gap-2">
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                >
+                  Edit Profile
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-9 w-9"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        toast.info('Change password coming soon');
+                      }}
+                    >
+                      Change Password
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </CardHeader>
           
-          <Tabs defaultValue="activity">
-            <TabsList className="mb-6">
-              <TabsTrigger value="activity" className="px-4">Activity</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="activity">
-              <TransitionWrapper animation="slide-up">
-                <div className="text-center py-12 bg-muted/50 rounded-lg">
-                  <h3 className="text-lg font-medium mb-2">No Conversations Yet</h3>
+          <CardContent>
+            <div className="space-y-4">
+              {Object.values(verificationStatus).some(status => status.status === 'verified') && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">Verified Accounts</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(verificationStatus).map(([platform, status]) => {
+                      if (status.status !== 'verified') return null;
+                      
+                      const Icon = platform === 'twitter' ? XIcon :
+                        platform === 'tiktok' ? TikTokIcon :
+                        platform === 'linkedin' ? Linkedin :
+                        platform === 'facebook' ? Facebook :
+                        platform === 'instagram' ? Instagram :
+                        platform === 'youtube' ? Youtube : UserIcon;
+                      
+                      return (
+                        <a 
+                          key={platform}
+                          href={socialLinks[platform as keyof ContextSocialLinks] || ''}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-12 w-12 rounded-full relative hover:bg-gray-100 transition-colors text-green-600 shadow-md shadow-green-200 ring-1 ring-green-500 animate-pulse"
+                          >
+                            <Icon className="h-5 w-5" />
+                            <div className="absolute -top-0.5 -right-0.5">
+                              <Check className="h-3.5 w-3.5 text-green-500 stroke-[3px]" />
+                            </div>
+                          </Button>
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
-              </TransitionWrapper>
-            </TabsContent>
-          </Tabs>
-        </div>
-      </TransitionWrapper>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Tabs defaultValue="activity">
+          <TabsList className="mb-6">
+            <TabsTrigger value="activity" className="px-4">Activity</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="activity">
+            <TransitionWrapper animation="slide-up">
+              <div className="text-center py-12 bg-muted/50 rounded-lg">
+                <h3 className="text-lg font-medium mb-2">No Conversations Yet</h3>
+              </div>
+            </TransitionWrapper>
+          </TabsContent>
+        </Tabs>
+      </div>
       
       <Dialog open={showValidateDialog} onOpenChange={setShowValidateDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Verify your {selectedPlatform} profile</DialogTitle>
+            <DialogTitle>Verify your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'Social Account'}</DialogTitle>
             <DialogDescription>
-              Follow these steps to verify your profile
+              Follow the steps to verify your account.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Verification Symbol</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  readOnly
-                  value={selectedPlatform ? verificationStatus[selectedPlatform].code || '' : ''}
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => {
-                    if (selectedPlatform && verificationStatus[selectedPlatform].code) {
-                      handleCopyCode(verificationStatus[selectedPlatform].code!);
-                    }
-                  }}
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Copy this symbol and paste it in your {selectedPlatform} bio
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>Profile URL</Label>
-              <Input
-                placeholder={`Enter your ${selectedPlatform} profile URL`}
-                value={selectedPlatform ? socialLinks[selectedPlatform] : ''}
-                onChange={(e) => {
-                  if (selectedPlatform) {
-                    setSocialLinks(prev => ({
-                      ...prev,
-                      [selectedPlatform]: e.target.value
-                    }));
-                  }
-                }}
-              />
-            </div>
-          </div>
+          {selectedPlatform && (
+             <> 
+              {verificationStep === 'code' && (
+                  <div className="space-y-4 py-4">
+                       <div className="space-y-2">
+                           <Label>Verification Code</Label>
+                           <div className="flex items-center gap-2">
+                               <Input
+                                   readOnly
+                                   value={verificationStatus[selectedPlatform]?.code || ''}
+                               />
+                               <Button
+                                   variant="outline"
+                                   size="icon"
+                                   onClick={() => {
+                                       const codeToCopy = verificationStatus[selectedPlatform]?.code;
+                                       if (codeToCopy) {
+                                         handleCopyCode(codeToCopy);
+                                       }
+                                   }}
+                                   disabled={!verificationStatus[selectedPlatform]?.code}
+                               >
+                                   <Copy className="h-4 w-4" />
+                               </Button>
+                           </div>
+                           <p className="text-sm text-muted-foreground">
+                               Copy this code and paste it temporarily in your {selectedPlatform} profile bio or a new post.
+                           </p>
+                       </div>
+                  </div>
+              )}
+              {verificationStep === 'profile' && (
+                   <div className="space-y-4 py-4">
+                       {/* ... JSX for profile link input and screenshot ... */} 
+                   </div>
+              )}
+             </> 
+          )}
           <DialogFooter>
             <Button
               onClick={() => {
-                if (selectedPlatform) {
-                  handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform]);
+                if (selectedPlatform && socialLinks[selectedPlatform]) {
+                  handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform] || '');
                 }
               }}
               disabled={!selectedPlatform || !socialLinks[selectedPlatform]}
@@ -806,7 +979,6 @@ const Profile: React.FC<ProfileProps> = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Image Editor Dialog */}
       <Dialog open={imageEditor.isOpen} onOpenChange={(open) => setImageEditor(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -929,7 +1101,6 @@ const Profile: React.FC<ProfileProps> = () => {
         }}
       />
 
-      {/* Edit Profile Dialog */}
       <Dialog open={isEditing} onOpenChange={setIsEditing}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader className="pb-2">
@@ -939,7 +1110,6 @@ const Profile: React.FC<ProfileProps> = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-1">
-            {/* Profile Picture Section */}
             <div className="space-y-1">
               <Label className="text-xs font-medium">Profile Picture</Label>
               <div className="flex flex-col items-center gap-1">
@@ -1000,7 +1170,6 @@ const Profile: React.FC<ProfileProps> = () => {
               </div>
             </div>
 
-            {/* Name Input */}
             <div className="space-y-1">
               <Label htmlFor="name" className="text-xs font-medium">Name</Label>
               <Input
@@ -1013,7 +1182,6 @@ const Profile: React.FC<ProfileProps> = () => {
               />
             </div>
 
-            {/* Username Input */}
             <div className="space-y-1">
               <Label htmlFor="username" className="text-xs font-medium">Username</Label>
               <Input
@@ -1026,7 +1194,6 @@ const Profile: React.FC<ProfileProps> = () => {
               />
             </div>
 
-            {/* Bio Input */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <Label htmlFor="bio" className="text-xs font-medium">Bio</Label>
@@ -1046,99 +1213,38 @@ const Profile: React.FC<ProfileProps> = () => {
               />
             </div>
 
-            {/* Social Verification */}
             <div className="space-y-1">
               <Label className="text-xs font-medium">Social Verification</Label>
               <div className="grid grid-cols-6 gap-1">
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.linkedin.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.linkedin.status === 'pending' && "text-yellow-500",
-                    verificationStatus.linkedin.status === 'failed' && "text-red-500",
-                    verificationStatus.linkedin.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('linkedin')}
-                >
-                  <Linkedin className="h-4 w-4" />
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.twitter.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.twitter.status === 'pending' && "text-yellow-500",
-                    verificationStatus.twitter.status === 'failed' && "text-red-500",
-                    verificationStatus.twitter.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('twitter')}
-                >
-                  <XIcon className="h-4 w-4" />
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.facebook.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.facebook.status === 'pending' && "text-yellow-500",
-                    verificationStatus.facebook.status === 'failed' && "text-red-500",
-                    verificationStatus.facebook.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('facebook')}
-                >
-                  <Facebook className="h-4 w-4" />
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.instagram.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.instagram.status === 'pending' && "text-yellow-500",
-                    verificationStatus.instagram.status === 'failed' && "text-red-500",
-                    verificationStatus.instagram.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('instagram')}
-                >
-                  <Instagram className="h-4 w-4" />
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.youtube.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.youtube.status === 'pending' && "text-yellow-500",
-                    verificationStatus.youtube.status === 'failed' && "text-red-500",
-                    verificationStatus.youtube.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('youtube')}
-                >
-                  <Youtube className="h-4 w-4" />
-                </Button>
-
-                <Button 
-                  variant="outline" 
-                  size="icon"
-                  className={cn(
-                    "h-10 w-10 rounded-full",
-                    verificationStatus.tiktok.status === 'verified' && "text-green-600 hover:text-green-700",
-                    verificationStatus.tiktok.status === 'pending' && "text-yellow-500",
-                    verificationStatus.tiktok.status === 'failed' && "text-red-500",
-                    verificationStatus.tiktok.status === 'unverified' && "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => handleVerificationStart('tiktok')}
-                >
-                  <TikTokIcon className="h-4 w-4" />
-                </Button>
+                {socialIcons.map(({ name, Icon }) => {
+                  const platformName = name;
+                  const statusInfo = verificationStatus[platformName] || { status: 'unverified' };
+                  const isVerified = statusInfo.status === 'verified';
+                  const isPending = statusInfo.status === 'pending';
+                  return (
+                    <Button
+                      key={platformName}
+                      variant="outline"
+                      size="icon"
+                      className={cn(
+                        "h-10 w-10 rounded-full relative",
+                        isVerified && "border-green-500 text-green-500 ring-1 ring-green-500",
+                        isPending && "border-yellow-500 text-yellow-500",
+                        !isVerified && !isPending && "text-muted-foreground"
+                      )}
+                      onClick={() => handleVerificationStart(platformName)}
+                      disabled={isVerified || isPending}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {isVerified && (
+                        <CheckIcon className="h-3 w-3 text-white bg-green-500 rounded-full absolute -top-1 -right-1 p-0.5" />
+                      )}
+                      {isPending && (
+                        <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />
+                      )}
+                    </Button>
+                  );
+                })}
               </div>
               <p className="text-[10px] text-muted-foreground">At least one social verification required</p>
             </div>
@@ -1147,7 +1253,7 @@ const Profile: React.FC<ProfileProps> = () => {
             <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setIsEditing(false)}>
               Cancel
             </Button>
-            <Button size="sm" className="h-7 text-xs" onClick={handleSave}>
+            <Button size="sm" className="h-7 text-xs" onClick={handleSaveProfile}>
               Save Changes
             </Button>
           </DialogFooter>
@@ -1231,7 +1337,7 @@ const Profile: React.FC<ProfileProps> = () => {
           </Button>
         </div>
       )}
-    </>
+    </TransitionWrapper>
   );
 };
 

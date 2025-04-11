@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, onAuthStateChanged, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
+import { User, onAuthStateChanged, createUserWithEmailAndPassword, updateProfile, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase'; // Adjust path if needed
 import { doc, setDoc, onSnapshot, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -18,6 +18,7 @@ export interface SocialLinks {
 export interface VerificationStatus {
   status: 'unverified' | 'pending' | 'verified' | 'failed';
   timestamp?: number;
+  code?: string;
 }
 
 export interface ExtendedUser extends User {
@@ -29,6 +30,7 @@ export interface ExtendedUser extends User {
   verificationStatus?: {
     [key: string]: VerificationStatus;
   };
+  updatedAt?: string;
 }
 
 interface NotificationType {
@@ -46,7 +48,7 @@ interface AuthContextType {
   register: (name: string, email: string, username: string, password: string) => Promise<ExtendedUser>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (user: ExtendedUser) => void;
+  updateProfile: (updatedData: Partial<ExtendedUser>) => Promise<void>;
   isEditing: boolean;
   setIsEditing: (value: boolean) => void;
   notifications: NotificationType[];
@@ -74,51 +76,90 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
+  
+  // Keep track of already processed notification IDs at component level so it persists across renders
+  const processedNotifications = useRef(new Set<string>());
 
   useEffect(() => {
-    // Listen for authentication state changes
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('Auth state changed:', user);
-      if (user) {
-        // Get user data from Firestore
-        const userRef = doc(db, 'users', user.uid);
-        onSnapshot(userRef, (doc) => {
-          if (doc.exists()) {
-            const userData = doc.data();
-            const extendedUser: ExtendedUser = {
-              ...user,
-              name: userData.name || user.displayName || '',
-              username: userData.username || '',
-              bio: userData.bio || '',
-              photoURL: userData.photoURL || user.photoURL || '',
-              socialLinks: userData.socialLinks || {},
-              isAdmin: userData.isAdmin || false,
-              verificationStatus: userData.verificationStatus || {}
-            };
-            setCurrentUser(extendedUser);
+    // Auth state listener
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      try {
+        if (user) {
+          // Get user data from Firestore
+          const userRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userRef);
+          const userData = userDoc.data();
+
+          if (userData) {
+            console.log('Auth state changed: Setting user data with verification status:', userData.verificationStatus);
+            
+            // Set current user with all necessary data
+            setCurrentUser({
+              ...user, // Start with the base Firebase User object
+              // Explicitly assign properties from Firestore data (userData) or Firebase user
+              name: userData.name || userData.displayName || user.displayName || '',
+              username: userData.username || '', // Ensure username is always defined
+              displayName: userData.displayName || user.displayName, // Use Firestore displayName first
+              photoURL: userData.photoURL || user.photoURL, // Use Firestore photoURL first
+              bio: userData.bio || '', // Use Firestore bio
+              isAdmin: userData.isAdmin || false, // Use Firestore isAdmin status
+              verificationStatus: userData.verificationStatus || {}, // Use Firestore verificationStatus
+              socialLinks: userData.socialLinks || {}, // Use Firestore socialLinks
+              updatedAt: userData.updatedAt || '', // Use Firestore updatedAt
+              // Removed the potentially problematic ...userData spread
+            });
+
+            // Store verification status in localStorage as backup
+            localStorage.setItem('userVerificationStatus', JSON.stringify(userData.verificationStatus || {}));
+            localStorage.setItem('userSocialLinks', JSON.stringify(userData.socialLinks || {}));
           } else {
-            // If no Firestore document exists, use basic user data
-            const extendedUser: ExtendedUser = {
+            // If no Firestore data, set basic user data
+            setCurrentUser({
               ...user,
               name: user.displayName || '',
               username: '',
+              displayName: user.displayName,
+              photoURL: user.photoURL,
               bio: '',
-              photoURL: user.photoURL || '',
-              socialLinks: {},
               isAdmin: false,
-              verificationStatus: {}
-            };
-            setCurrentUser(extendedUser);
+              verificationStatus: {},
+              socialLinks: {},
+              updatedAt: '',
+            });
           }
-        });
-      } else {
-        setCurrentUser(null);
+        } else {
+          // User is signed out
+          setCurrentUser(null);
+          localStorage.removeItem('userVerificationStatus');
+          localStorage.removeItem('userSocialLinks');
+        }
+      } catch (error) {
+        console.error('Error in auth state listener:', error);
+        // On error, try to load from localStorage as fallback
+        if (user) {
+          const verificationStatus = localStorage.getItem('userVerificationStatus');
+          const socialLinks = localStorage.getItem('userSocialLinks');
+          setCurrentUser({
+            ...user,
+            name: user.displayName || '',
+            username: '',
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            bio: '',
+            isAdmin: false,
+            verificationStatus: verificationStatus ? JSON.parse(verificationStatus) : {},
+            socialLinks: socialLinks ? JSON.parse(socialLinks) : {},
+            updatedAt: '',
+          });
+        } else {
+          setCurrentUser(null);
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    // Cleanup subscription on unmount
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
 
   // Add notification listener
@@ -128,42 +169,76 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Listen for notifications
     const notificationsRef = collection(db, 'notifications', currentUser.uid, 'userNotifications');
     const unsubscribeNotifications = onSnapshot(notificationsRef, async (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          
-          // Add new notification to state
-          setNotifications(prev => [{
-            id: change.doc.id,
-            ...data
-          } as NotificationType, ...prev]);
-
-          // If it's a verification notification, refresh user data
-          if (data.type === 'verification_approved') {
-            // Get fresh user data from Firestore
-            const userRef = doc(db, 'users', currentUser.uid);
-            const userDoc = await getDoc(userRef);
-            const userData = userDoc.data();
-
-            if (userData) {
-              // Update current user with fresh data
-              setCurrentUser(prev => {
-                if (!prev) return null;
-                return {
-                  ...prev,
-                  verificationStatus: userData.verificationStatus || {},
-                  socialLinks: userData.socialLinks || {}
-                };
-              });
-
-              // Show toast notification
-              toast.success(`Your ${data.platform} account has been verified!`);
+      try {
+        for (const change of snapshot.docChanges()) {
+          // Only process new notifications that we haven't seen before
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            const notificationKey = `${data.type}_${data.platform}_${change.doc.id}`;
+            
+            // Check if we've already processed this notification
+            if (processedNotifications.current.has(change.doc.id) || localStorage.getItem(notificationKey)) {
+              continue; // Skip this notification
             }
-          } else if (data.type === 'verification_rejected') {
-            toast.error(`Your ${data.platform} verification was rejected`);
+            
+            // Mark as processed
+            processedNotifications.current.add(change.doc.id);
+            
+            // Add new notification to state
+            setNotifications(prev => [{
+              id: change.doc.id,
+              ...data
+            } as NotificationType, ...prev]);
+
+            // If it's a verification notification, refresh user data
+            if (data.type === 'verification_approved') {
+              try {
+                // Get fresh user data from Firestore
+                const userRef = doc(db, 'users', currentUser.uid);
+                const userDoc = await getDoc(userRef);
+                const userData = userDoc.data();
+
+                if (userData) {
+                  console.log('Verification approved: Updating user data with:', userData.verificationStatus);
+                  
+                  // Update current user with fresh data
+                  setCurrentUser(prev => {
+                    if (!prev) return null;
+                    return {
+                      ...prev,
+                      verificationStatus: userData.verificationStatus || {},
+                      socialLinks: userData.socialLinks || {},
+                      updatedAt: userData.updatedAt || '',
+                    };
+                  });
+
+                  // Store verification status in localStorage as backup
+                  localStorage.setItem('userVerificationStatus', JSON.stringify(userData.verificationStatus));
+                  localStorage.setItem('userSocialLinks', JSON.stringify(userData.socialLinks));
+
+                  // Only show toast if not already handled in admin dashboard
+                  if (!data.handledInAdmin) {
+                    toast.success(`Your ${data.platform} account has been verified!`);
+                    localStorage.setItem(notificationKey, 'true');
+                  }
+                }
+              } catch (error) {
+                console.error('Error updating user data after verification:', error);
+              }
+            } else if (data.type === 'verification_rejected') {
+              // Only show toast if not already handled in admin dashboard
+              if (!data.handledInAdmin) {
+                toast.error(`Your ${data.platform} verification was rejected.`);
+                localStorage.setItem(notificationKey, 'true');
+              }
+            }
           }
         }
-      });
+      } catch (error) {
+        console.error('Error processing notifications:', error);
+      }
+    }, (error) => {
+      console.error('Error in notification listener:', error);
     });
 
     return () => {
@@ -241,35 +316,77 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const login = async (email: string, password: string) => {
-    // Implement login functionality
+    try {
+      // Just perform the sign in - the auth state listener will handle the rest
+      await signInWithEmailAndPassword(auth, email, password);
+      
+      // No need to set currentUser here as onAuthStateChanged will handle it
+      // Just show the success message after a short delay to ensure state is set
+      setTimeout(() => {
+        toast.success('Welcome back!');
+      }, 500);
+    } catch (error: any) {
+      console.error('Login error:', error);
+      toast.error(error.message || 'Failed to log in');
+      throw error;
+    }
   };
 
   const logout = async () => {
-    // Implement logout functionality
+    try {
+      await signOut(auth);
+      setCurrentUser(null);
+      // Clear localStorage
+      localStorage.removeItem('userVerificationStatus');
+      localStorage.removeItem('userSocialLinks');
+      toast.success('Logged out successfully');
+    } catch (error: any) {
+      console.error('Logout error:', error);
+      toast.error('Failed to log out');
+      throw error;
+    }
   };
 
-  const updateProfile = async (user: ExtendedUser) => {
+  const updateProfile = async (updatedData: Partial<ExtendedUser>) => {
     if (!currentUser) return;
 
-    // Update the user's profile in Firestore
-    const userRef = doc(db, 'users', currentUser.uid);
-    await setDoc(userRef, {
-      name: user.name,
-      username: user.username,
-      bio: user.bio,
-      photoURL: user.photoURL,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    // Prepare data for Firestore update (only include fields relevant to Firestore)
+    const dataToUpdate: { [key: string]: any } = {}; // Use a more flexible type for Firestore data
+    
+    // Explicitly copy fields intended for Firestore
+    if (updatedData.name !== undefined) dataToUpdate.name = updatedData.name;
+    if (updatedData.username !== undefined) dataToUpdate.username = updatedData.username;
+    if (updatedData.bio !== undefined) dataToUpdate.bio = updatedData.bio;
+    if (updatedData.photoURL !== undefined) dataToUpdate.photoURL = updatedData.photoURL; // Storing photoURL in Firestore
+    if (updatedData.socialLinks !== undefined) dataToUpdate.socialLinks = updatedData.socialLinks;
+    if (updatedData.isAdmin !== undefined) dataToUpdate.isAdmin = updatedData.isAdmin;
+    if (updatedData.verificationStatus !== undefined) dataToUpdate.verificationStatus = updatedData.verificationStatus;
+    // Add other custom fields as needed
+    
+    dataToUpdate.updatedAt = new Date().toISOString(); // Add timestamp
 
-    // Update the local state
-    setCurrentUser({
-      ...currentUser,
-      name: user.name,
-      username: user.username,
-      bio: user.bio,
-      photoURL: user.photoURL || '',
-      socialLinks: {}
-    });
+    try {
+      // Update Firestore
+      const userRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userRef, dataToUpdate, { merge: true });
+      console.log('Firestore updated with:', dataToUpdate);
+
+      // Update the local state by merging
+      // Note: We merge the entire updatedData, even if some props are read-only on the base User type
+      // The local state update should reflect the intended state after potential Firebase Auth updates (handled by the component)
+      setCurrentUser(prevUser => {
+        if (!prevUser) return null;
+        console.log('Updating local currentUser state by merging:', updatedData);
+        // Merge existing currentUser with the *provided* updated fields
+        return { ...prevUser, ...updatedData };
+      });
+
+    } catch (error) {
+      console.error("Error updating Firestore or local state:", error);
+      toast.error("Failed to save profile changes.");
+      // Re-throw the error if the calling component needs to handle it
+      throw error;
+    }
   };
 
   const markNotificationAsRead = (notificationId: string) => {
@@ -325,7 +442,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           photoURL: firestoreData.photoURL || firebaseUser.photoURL || '',
           socialLinks: firestoreData.socialLinks || {},
           isAdmin: firestoreData.isAdmin || false,
-          verificationStatus: firestoreData.verificationStatus || {}
+          verificationStatus: firestoreData.verificationStatus || {},
+          updatedAt: firestoreData.updatedAt || '',
         } as ExtendedUser;
       }
       
@@ -333,7 +451,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return {
         ...firestoreData,
         socialLinks: firestoreData.socialLinks || {},
-        verificationStatus: firestoreData.verificationStatus || {}
+        verificationStatus: firestoreData.verificationStatus || {},
+        updatedAt: firestoreData.updatedAt || '',
       } as ExtendedUser;
     } catch (error) {
       console.error('Error finding user:', error);

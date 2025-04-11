@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, serverTimestamp, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, serverTimestamp, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,8 +42,12 @@ const AdminDashboard = () => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   useEffect(() => {
+    // Log current user state
+    console.log('Current user:', currentUser);
+
     // Check if user is admin
     if (!currentUser?.isAdmin) {
+      console.log('User is not admin, navigating to landing page');
       navigate('/');
       return;
     }
@@ -63,107 +67,95 @@ const AdminDashboard = () => {
 
   const handleUpdateStatus = async (requestId: string, newStatus: 'approved' | 'rejected') => {
     try {
+      console.log(`Starting verification update process for request ${requestId}`);
+      
+      // Get the request data first
       const requestRef = doc(db, 'verificationRequests', requestId);
-      const requestDoc = await getDoc(requestRef);
-      const requestData = requestDoc.data();
-
-      if (!requestData) {
+      const requestSnap = await getDoc(requestRef);
+      
+      if (!requestSnap.exists()) {
         toast.error('Request not found');
         return;
       }
 
-      // Get user reference and data
-      const userRef = doc(db, 'users', requestData.userId);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data() || {};
+      const requestData = requestSnap.data();
+      const targetUserId = requestData.userId;
+      const platform = requestData.platform;
+
+      // Batch write to ensure atomicity
+      const batch = writeBatch(db);
 
       if (newStatus === 'approved') {
-        // Update user's verification status and social links
-        await updateDoc(userRef, {
-          [`verificationStatus.${requestData.platform}`]: {
-            status: 'verified',
-            timestamp: serverTimestamp()
+        // Get the user reference and current data
+        const userRef = doc(db, 'users', targetUserId);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data() || {};
+        
+        // Prepare the update data, preserving existing verification statuses
+        const updateData = {
+          verificationStatus: {
+            ...(userData.verificationStatus || {}),
+            [platform]: {
+              status: 'verified',
+              timestamp: serverTimestamp()
+            }
           },
-          [`socialLinks.${requestData.platform}`]: requestData.profileUrl
-        });
+          socialLinks: {
+            ...(userData.socialLinks || {}),
+            [platform]: requestData.profileUrl
+          }
+        };
 
-        // Delete the request after successful approval
-        await deleteDoc(requestRef);
+        // Add the update to batch
+        batch.set(userRef, updateData, { merge: true });
 
-        // Add notification
-        const notificationRef = doc(collection(db, 'notifications', requestData.userId, 'userNotifications'));
-        await setDoc(notificationRef, {
+        // Create notification document
+        const notificationRef = doc(collection(db, 'notifications', targetUserId, 'userNotifications'));
+        batch.set(notificationRef, {
           type: 'verification_approved',
-          message: `Your ${requestData.platform} account has been verified!`,
+          message: `Your ${platform} account has been verified!`,
           timestamp: serverTimestamp(),
           read: false,
-          platform: requestData.platform
+          platform: platform,
+          handledInAdmin: true
         });
 
-        toast.success(`Verification request approved for ${requestData.username}'s ${requestData.platform} account`);
+        // Delete the request
+        batch.delete(requestRef);
+
+        // Commit all changes atomically
+        await batch.commit();
+        
+        console.log(`Successfully approved verification for user ${targetUserId} on ${platform}`, updateData);
+        toast.success(`Verification request approved for ${requestData.username}'s ${platform} account`);
       } else {
-        // For rejection, update the request status
-        await updateDoc(requestRef, {
+        // Handle rejection
+        const notificationRef = doc(collection(db, 'notifications', targetUserId, 'userNotifications'));
+        
+        batch.set(notificationRef, {
+          type: 'verification_rejected',
+          message: `Your ${platform} verification was rejected`,
+          timestamp: serverTimestamp(),
+          read: false,
+          platform: platform,
+          handledInAdmin: true
+        });
+
+        // Update request status
+        batch.update(requestRef, {
           status: newStatus,
           updatedAt: serverTimestamp()
         });
 
-        // Add rejection notification
-        const notificationRef = doc(collection(db, 'notifications', requestData.userId, 'userNotifications'));
-        await setDoc(notificationRef, {
-          type: 'verification_rejected',
-          message: `Your ${requestData.platform} verification was rejected`,
-          timestamp: serverTimestamp(),
-          read: false,
-          platform: requestData.platform
-        });
-
-        toast.error(`Verification request rejected for ${requestData.username}'s ${requestData.platform} account`);
+        // Commit all changes atomically
+        await batch.commit();
+        
+        console.log(`Successfully rejected verification for user ${targetUserId} on ${platform}`);
+        toast.error(`Verification request rejected for ${requestData.username}'s ${platform} account`);
       }
     } catch (error) {
-      console.error('Error updating status:', error);
+      console.error('Error updating verification status:', error);
       toast.error('Failed to update verification status');
-    }
-  };
-
-  // Add test function
-  const testVerification = async () => {
-    try {
-      console.log('Starting verification test...');
-      const TEST_USER_ID = currentUser?.uid;
-      const TEST_PLATFORM = 'twitter';
-
-      if (!TEST_USER_ID) {
-        console.error('No user ID available');
-        return;
-      }
-
-      // 1. Create a verification request
-      const requestId = `${TEST_USER_ID}_${TEST_PLATFORM}`;
-      const requestRef = doc(db, 'verificationRequests', requestId);
-      
-      await setDoc(requestRef, {
-        userId: TEST_USER_ID,
-        username: currentUser.username,
-        platform: TEST_PLATFORM,
-        profileUrl: 'https://twitter.com/arena',
-        verificationCode: '##',
-        requestedAt: serverTimestamp(),
-        status: 'pending'
-      });
-      
-      console.log('✅ Created verification request');
-      toast.success('Test verification request created');
-
-      // Wait for 2 seconds
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // 2. Approve the request
-      await handleUpdateStatus(requestId, 'approved');
-      console.log('✅ Test completed successfully!');
-    } catch (error) {
-      console.error('❌ Test failed:', error);
-      toast.error('Test failed');
     }
   };
 
@@ -194,9 +186,6 @@ const AdminDashboard = () => {
               <CardTitle>Verification Requests</CardTitle>
               <CardDescription>Manage social media verification requests from users</CardDescription>
             </div>
-            <Button onClick={testVerification} variant="outline">
-              Run Test
-            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -283,4 +272,4 @@ const AdminDashboard = () => {
   );
 };
 
-export default AdminDashboard; 
+export default AdminDashboard;
