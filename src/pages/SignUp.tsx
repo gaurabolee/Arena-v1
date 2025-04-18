@@ -79,19 +79,19 @@ const SignUp: React.FC = () => {
   return (
     <>
       <Navbar />
-      <TransitionWrapper animation="slide-up" className="min-h-screen pt-20 pb-10 px-4">
-        <div className="max-w-md mx-auto pt-10">
+      <TransitionWrapper animation="slide-up" className="min-h-screen pt-8 pb-10 px-4">
+        <div className="max-w-sm sm:max-w-xs mx-auto pt-0">
           {/* Using Card structure similar to Login.tsx */}
-          <Card className="border-0 shadow-subtle overflow-hidden">
-            <CardHeader className="space-y-1 text-center">
-              <CardTitle className="text-2xl font-medium">Create an Account</CardTitle>
+          <Card className="border-0 shadow-subtle overflow-hidden p-2 sm:p-4">
+            <CardHeader className="space-y-1 text-center p-2 pb-0">
+              <CardTitle className="text-xl font-medium">Create an Account</CardTitle>
               <CardDescription>
                 Join the Arena! Fill in your details below.
               </CardDescription>
             </CardHeader>
 
             <form onSubmit={handleSignUp}>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3 p-2">
                  {/* Display error message */} 
                 {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 
@@ -169,7 +169,7 @@ const SignUp: React.FC = () => {
                 </div>
               </CardContent>
 
-              <CardFooter className="flex flex-col space-y-4">
+              <CardFooter className="flex flex-col space-y-3 p-2 pt-0">
                 <Button
                   type="submit"
                   className="w-full rounded-md button-effect"

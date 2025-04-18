@@ -36,6 +36,7 @@ import Logo from '@/components/Logo';
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Badge } from "@/components/ui/badge";
+import VerificationCard from '@/components/VerificationCard';
 
 interface SocialVerification {
   linkedin: ContextVerificationStatus;
@@ -582,61 +583,6 @@ const Profile: React.FC<ProfileProps> = () => {
     { name: 'tiktok', Icon: Shield, label: 'TikTok' },
   ] as const;
 
-  const renderSocialButtons = () => {
-    return (
-      <div className="flex flex-wrap gap-2 mt-3">
-        {socialIcons.map(({ name, Icon, label }) => {
-          const platformKey = name;
-          const statusInfo: ContextVerificationStatus = verificationStatus[platformKey] || { status: 'unverified' };
-          const status = statusInfo.status;
-          const currentLink = socialLinks[platformKey] || '';
-          const isPending = status === 'pending';
-          const isVerified = status === 'verified';
-
-          return (
-            <div key={platformKey} className="flex items-center">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "flex items-center gap-2 relative",
-                  isVerified && "text-green-500 hover:text-green-600",
-                  isPending && "text-yellow-500 hover:text-yellow-600",
-                  !isVerified && !isPending && "text-muted-foreground hover:text-foreground"
-                )}
-                onClick={() => isVerified ? window.open(currentLink, '_blank') : handleVerificationStart(platformKey)}
-                disabled={isPending}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{label}</span>
-                {isVerified && <CheckIcon className="h-3 w-3 text-green-500 absolute -top-1 -right-1 bg-background rounded-full p-0.5" />}
-                {isPending && <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />}
-              </Button>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const toggleSettings = () => {
-    setShowSettings(!showSettings);
-  };
-
-  const handleVerificationStart = (platform: keyof ContextSocialLinks) => {
-    const symbol = generateVerificationSymbol();
-    
-    // Create the updated verification status
-    const updatedStatus = {
-      ...verificationStatus,
-      [platform]: { 
-        ...verificationStatus[platform], 
-        status: 'pending', 
-        code: symbol,
-        timestamp: Date.now()
-      }
-    };
-
     // Update component state
     setVerificationStatus(updatedStatus);
     
@@ -766,7 +712,7 @@ const Profile: React.FC<ProfileProps> = () => {
       console.error('Error making admin:', error);
       toast.error('Failed to set admin status');
     }
-  }
+  };
 
   if (!currentUser) {
     return (
@@ -786,7 +732,8 @@ const Profile: React.FC<ProfileProps> = () => {
   }
 
   return (
-    <>
+    <TransitionWrapper className="pt-8 pb-10">
+      {/* Matched spacing with Invite Link/SignUp card */}
       <Navbar />
       <div className="container mx-auto px-4 py-8 max-w-4xl mt-8">
         <Card className="mb-8">
@@ -926,6 +873,44 @@ const Profile: React.FC<ProfileProps> = () => {
               Follow the steps to verify your account.
             </DialogDescription>
           </DialogHeader>
+          {selectedPlatform && (
+             <> 
+              {verificationStep === 'code' && (
+                  <div className="space-y-4 py-4">
+                       <div className="space-y-2">
+                           <Label>Verification Code</Label>
+                           <div className="flex items-center gap-2">
+                               <Input
+                                   readOnly
+                                   value={verificationStatus[selectedPlatform]?.code || ''}
+                               />
+                               <Button
+                                   variant="outline"
+                                   size="icon"
+                                   onClick={() => {
+                                       const codeToCopy = verificationStatus[selectedPlatform]?.code;
+                                       if (codeToCopy) {
+                                         handleCopyCode(codeToCopy);
+                                       }
+                                   }}
+                                   disabled={!verificationStatus[selectedPlatform]?.code}
+                               >
+                                   <Copy className="h-4 w-4" />
+                               </Button>
+                           </div>
+                           <p className="text-sm text-muted-foreground">
+                               Copy this code and paste it temporarily in your {selectedPlatform} profile bio or a new post.
+                           </p>
+                       </div>
+                  </div>
+              )}
+              {verificationStep === 'profile' && (
+                   <div className="space-y-4 py-4">
+                       {/* ... JSX for profile link input and screenshot ... */} 
+                   </div>
+              )}
+             </> 
+          )}
           <DialogFooter>
             <Button
               onClick={() => {
@@ -1101,7 +1086,7 @@ const Profile: React.FC<ProfileProps> = () => {
                       {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-8 w-8" />}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                     {photoURL ? (
                       <Edit3 className="h-3 w-3 text-white" />
                     ) : (
@@ -1177,34 +1162,26 @@ const Profile: React.FC<ProfileProps> = () => {
 
             <div className="space-y-1">
               <Label className="text-xs font-medium">Social Verification</Label>
-              <div className="grid grid-cols-6 gap-1">
-                {socialIcons.map(({ name, Icon }) => {
-                  const platformName = name;
-                  const statusInfo = verificationStatus[platformName] || { status: 'unverified' };
-                  const isVerified = statusInfo.status === 'verified';
-                  const isPending = statusInfo.status === 'pending';
+              {/* New VerificationCard-based UI */}
+              <div className="flex flex-col gap-4 mt-3">
+                {socialIcons.map(({ name, label }) => {
+                  const platformKey = name;
+                  const statusInfo: ContextVerificationStatus = verificationStatus[platformKey] || { status: 'unverified' };
+                  const status = statusInfo.status as 'pending' | 'verified' | 'rejected' | null;
+                  const code = statusInfo.code || null;
+                  const currentLink = socialLinks[platformKey] || '';
                   return (
-                    <Button
-                      key={platformName}
-                      variant="outline"
-                      size="icon"
-                      className={cn(
-                        "h-10 w-10 rounded-full relative",
-                        isVerified && "border-green-500 text-green-500 ring-1 ring-green-500",
-                        isPending && "border-yellow-500 text-yellow-500",
-                        !isVerified && !isPending && "text-muted-foreground"
-                      )}
-                      onClick={() => handleVerificationStart(platformName)}
-                      disabled={isVerified || isPending}
-                    >
-                      <Icon className="h-5 w-5" />
-                      {isVerified && (
-                        <CheckIcon className="h-3 w-3 text-white bg-green-500 rounded-full absolute -top-1 -right-1 p-0.5" />
-                      )}
-                      {isPending && (
-                        <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />
-                      )}
-                    </Button>
+                    <VerificationCard
+                      key={platformKey}
+                      platform={label}
+                      status={status}
+                      code={code}
+                      profileLink={currentLink}
+                      onSubmit={handleVerificationSubmit}
+                      onCopyCode={handleCopyCode}
+                      onResend={() => handleVerificationStart(platformKey)}
+                      disabled={status === 'verified'}
+                    />
                   );
                 })}
               </div>
@@ -1299,8 +1276,7 @@ const Profile: React.FC<ProfileProps> = () => {
           </Button>
         </div>
       )}
-    </>
+    </TransitionWrapper>
   );
 };
-
 export default Profile;
