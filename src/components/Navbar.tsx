@@ -134,17 +134,34 @@ const Navbar: React.FC = () => {
                       variant="ghost" 
                       size="sm" 
                       className={cn(
-                        "rounded-full p-2 w-9 h-9 transition-all duration-200",
+                        "rounded-full p-2 w-9 h-9 transition-all duration-200 flex items-center justify-center",
                         location.pathname === link.path ? "bg-gray-200" : ""
                       )}
                       aria-label={link.name}
                     >
-                      {React.cloneElement(link.icon, {
-                        className: cn(
-                          "transition-all duration-200",
-                          location.pathname === link.path ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
-                        )
-                      })}
+                      {link.name === 'Activity' ? (
+                        <div className="relative flex items-center justify-center w-full h-full">
+                          <Bell className={cn(
+                            "transition-all duration-200",
+                            location.pathname === link.path ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
+                          )} />
+                          {unreadBellCount > 0 && (
+                            <Badge
+                              variant="default"
+                              className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                            >
+                              {unreadBellCount}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        React.cloneElement(link.icon, {
+                          className: cn(
+                            "transition-all duration-200",
+                            location.pathname === link.path ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
+                          )
+                        })
+                      )}
                     </Button>
                   </Link>
                 </li>

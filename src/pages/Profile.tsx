@@ -579,7 +579,7 @@ const Profile: React.FC<ProfileProps> = () => {
     { name: 'facebook', Icon: Facebook, label: 'Facebook' },
     { name: 'instagram', Icon: Instagram, label: 'Instagram' },
     { name: 'youtube', Icon: Youtube, label: 'YouTube' },
-    { name: 'tiktok', Icon: Shield, label: 'TikTok' },
+    { name: 'tiktok', Icon: TikTokIcon, label: 'TikTok' },
   ] as const;
 
   const renderSocialButtons = () => {
@@ -589,28 +589,29 @@ const Profile: React.FC<ProfileProps> = () => {
           const platformKey = name;
           const statusInfo: ContextVerificationStatus = verificationStatus[platformKey] || { status: 'unverified' };
           const status = statusInfo.status;
-          const currentLink = socialLinks[platformKey] || '';
+          const currentLink = socialLinks[platformKey as keyof ContextSocialLinks] || '';
           const isPending = status === 'pending';
           const isVerified = status === 'verified';
 
           return (
             <div key={platformKey} className="flex items-center">
               <Button
-                variant="ghost"
-                size="sm"
+                variant={isVerified ? "ghost" : "outline"}
+                size="icon"
                 className={cn(
-                  "flex items-center gap-2 relative",
-                  isVerified && "text-green-500 hover:text-green-600",
-                  isPending && "text-yellow-500 hover:text-yellow-600",
-                  !isVerified && !isPending && "text-muted-foreground hover:text-foreground"
+                  "flex items-center justify-center relative rounded-full",
+                  isVerified
+                    ? "text-black hover:text-gray-800 hover:bg-gray-100"
+                    : isPending
+                    ? "bg-yellow-100 hover:bg-yellow-200 text-yellow-600"
+                    : "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground"
                 )}
                 onClick={() => isVerified ? window.open(currentLink, '_blank') : handleVerificationStart(platformKey)}
                 disabled={isPending}
               >
-                <Icon className="h-4 w-4" />
-                <span>{label}</span>
-                {isVerified && <CheckIcon className="h-3 w-3 text-green-500 absolute -top-1 -right-1 bg-background rounded-full p-0.5" />}
-                {isPending && <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />}
+                <Icon className="h-5 w-5" />
+                {isVerified && <CheckIcon className="h-3.5 w-3.5 text-black bg-background rounded-full absolute -top-1 -right-1 p-0.5" />}
+                
               </Button>
             </div>
           );
@@ -722,7 +723,7 @@ const Profile: React.FC<ProfileProps> = () => {
       await syncVerificationStatusWithFirestore(updatedStatus);
 
       setShowValidateDialog(false);
-      toast.success('Verification request sent! We will notify you once verified.');
+      toast.success('Submitted for verification. You will be notified soon and can remove the code from your profile.');
 
     } catch (error) {
       console.error('Error submitting verification:', error);
@@ -788,7 +789,7 @@ const Profile: React.FC<ProfileProps> = () => {
   return (
     <>
       <Navbar />
-      <div className="container mx-auto px-4 py-8 max-w-4xl mt-8">
+      <div className="container mx-auto px-4 py-8 max-w-4xl mt-16">
         <Card className="mb-8">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
@@ -806,14 +807,31 @@ const Profile: React.FC<ProfileProps> = () => {
               </div>
               
               <div className="text-center sm:text-left">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-2xl font-medium mb-1">{formData.name}</CardTitle>
-                  {Object.values(verificationStatus).some(status => status.status === 'verified') && (
-                    <Badge variant="outline" className="bg-green-50 text-green-600 border-green-200">
-                      <CheckIcon className="h-3 w-3 mr-1" />
-                      Verified
-                    </Badge>
-                  )}
+                <div className="flex mb-1">
+                  <div className="relative inline-block">
+                    <CardTitle className="text-2xl font-medium">{formData.name}</CardTitle>
+                    {(() => {
+                      const verifiedCount = Object.values(verificationStatus).filter(s => s.status === 'verified').length;
+                      if (verifiedCount < 1) return null;
+                      let colorClass = '';
+                      let ringClass = '';
+                      if (verifiedCount === 1) {
+                        colorClass = 'text-[#cd7f32]';
+                        ringClass = 'ring-[#cd7f32]';
+                      } else if (verifiedCount === 2) {
+                        colorClass = 'text-gray-400';
+                        ringClass = 'ring-gray-400';
+                      } else {
+                        colorClass = 'text-yellow-400';
+                        ringClass = 'ring-yellow-400';
+                      }
+                      return (
+                        <span className="absolute top-0 left-full ml-1 inline-flex items-center justify-center h-4 w-4 bg-background rounded-full">
+                          <Check className={`h-2 w-2 ${colorClass}`} />
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <CardDescription>@{formData.username}</CardDescription>
                 <p className="mt-3 text-muted-foreground">
@@ -861,44 +879,42 @@ const Profile: React.FC<ProfileProps> = () => {
           
           <CardContent>
             <div className="space-y-4">
-              {Object.values(verificationStatus).some(status => status.status === 'verified') && (
-                <div className="space-y-2">
-                  <h3 className="text-sm font-medium">Verified Accounts</h3>
-                  <div className="flex flex-wrap gap-3">
-                    {Object.entries(verificationStatus).map(([platform, status]) => {
-                      if (status.status !== 'verified') return null;
-                      
-                      const Icon = platform === 'twitter' ? XIcon :
-                        platform === 'tiktok' ? TikTokIcon :
-                        platform === 'linkedin' ? Linkedin :
-                        platform === 'facebook' ? Facebook :
-                        platform === 'instagram' ? Instagram :
-                        platform === 'youtube' ? Youtube : UserIcon;
-                      
-                      return (
-                        <a 
-                          key={platform}
-                          href={socialLinks[platform as keyof ContextSocialLinks] || ''}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block"
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">Verified Accounts</h3>
+                <div className="flex flex-wrap gap-3">
+                  {Object.entries(verificationStatus).map(([platform, status]) => {
+                    if (status.status !== 'verified') return null;
+                    
+                    const Icon = platform === 'twitter' ? XIcon :
+                      platform === 'tiktok' ? TikTokIcon :
+                      platform === 'linkedin' ? Linkedin :
+                      platform === 'facebook' ? Facebook :
+                      platform === 'instagram' ? Instagram :
+                      platform === 'youtube' ? Youtube : UserIcon;
+                    
+                    return (
+                      <a 
+                        key={platform}
+                        href={socialLinks[platform as keyof ContextSocialLinks] || ''}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block"
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="relative p-0 text-black hover:text-gray-800 hover:bg-gray-100"
                         >
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-12 w-12 rounded-full relative hover:bg-gray-100 transition-colors text-green-600 shadow-md shadow-green-200 ring-1 ring-green-500 animate-pulse"
-                          >
-                            <Icon className="h-5 w-5" />
-                            <div className="absolute -top-0.5 -right-0.5">
-                              <Check className="h-3.5 w-3.5 text-green-500 stroke-[3px]" />
-                            </div>
-                          </Button>
-                        </a>
-                      );
-                    })}
-                  </div>
+                          <Icon className="h-4 w-4 text-black" />
+                          <div className="absolute -top-1 -right-1">
+                            <Check className="h-3 w-3 bg-background rounded-full p-0.5 text-black" />
+                          </div>
+                        </Button>
+                      </a>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -919,25 +935,65 @@ const Profile: React.FC<ProfileProps> = () => {
       </div>
       
       <Dialog open={showValidateDialog} onOpenChange={setShowValidateDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Verify your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'Social Account'}</DialogTitle>
-            <DialogDescription>
-              Follow the steps to verify your account.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              onClick={() => {
-                if (selectedPlatform && socialLinks[selectedPlatform]) {
-                  handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform] || '');
-                }
-              }}
-              disabled={!selectedPlatform || !socialLinks[selectedPlatform]}
-            >
-              Verify Profile
-            </Button>
-          </DialogFooter>
+        <DialogContent className="sm:max-w-[425px] p-0 bg-background rounded-2xl shadow-xl border border-border">
+          <Card className="bg-background rounded-2xl border-none shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium mb-1">Verify your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'Social Account'}</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground text-center">
+                Complete the steps below to verify your social account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-6">
+              <div className="w-full bg-muted/60 rounded-xl py-5 px-4 flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs font-medium text-muted-foreground mb-1">Step 1</span>
+                  <div className="flex items-center gap-1">
+                    <CopyIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-foreground">Copy this verification code</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="font-mono px-5 py-2 text-xs font-medium bg-background border border-border rounded-lg shadow select-all">
+                      {verificationStatus[selectedPlatform]?.code || ''}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-lg px-3 py-1 font-medium h-7 text-xs inline-flex items-center gap-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(verificationStatus[selectedPlatform]?.code || '');
+                        toast.success('Verification code copied! Go to your social profile to paste it.');
+                      }}
+                    >
+                      <CopyIcon className="h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+                <div className="w-full border-t border-border my-2" />
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs font-medium text-muted-foreground mb-1">Step 2</span>
+                  <span className="text-xs font-medium text-foreground">Paste it in your public profile/about section.</span>
+                </div>
+                <div className="w-full border-t border-border my-2" />
+                <div className="flex flex-col items-center gap-1 w-full">
+                  <span className="text-xs font-medium text-muted-foreground mb-1">Step 3</span>
+                  <span className="text-xs font-medium text-foreground">Paste your updated profile link below:</span>
+                  <Input
+                    className="mt-2 w-full text-center border border-border rounded-lg font-normal text-xs"
+                    placeholder={`Paste your updated ${selectedPlatform} profile URL here`}
+                    value={socialLinks[selectedPlatform] || ''}
+                    onChange={e => setSocialLinks({ ...socialLinks, [selectedPlatform]: e.target.value })}
+                  />
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="w-full mt-2">
+              <Button size="sm" className="w-full h-7 text-xs" onClick={() => handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform])} disabled={!selectedPlatform || !socialLinks[selectedPlatform]}>
+                Submit for Verification
+              </Button>
+            </CardFooter>
+          </Card>
         </DialogContent>
       </Dialog>
 
@@ -964,7 +1020,7 @@ const Profile: React.FC<ProfileProps> = () => {
                         />
                       </Avatar>
                     </div>
-                  </div>
+                </div>
                 )}
                 <div 
                   className="border-2 border-dashed rounded-lg p-8 transition-colors hover:border-primary/50 hover:bg-muted/50"
@@ -1186,23 +1242,20 @@ const Profile: React.FC<ProfileProps> = () => {
                   return (
                     <Button
                       key={platformName}
-                      variant="outline"
+                      variant={isVerified ? "ghost" : "outline"}
                       size="icon"
                       className={cn(
-                        "h-10 w-10 rounded-full relative",
-                        isVerified && "border-green-500 text-green-500 ring-1 ring-green-500",
-                        isPending && "border-yellow-500 text-yellow-500",
+                        isVerified
+                          ? "relative p-0 rounded-full text-black hover:text-gray-800 hover:bg-gray-100"
+                          : "h-10 w-10 rounded-full relative",
                         !isVerified && !isPending && "text-muted-foreground"
                       )}
                       onClick={() => handleVerificationStart(platformName)}
-                      disabled={isVerified || isPending}
+                      disabled={isVerified}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon className="h-4 w-4" />
                       {isVerified && (
-                        <CheckIcon className="h-3 w-3 text-white bg-green-500 rounded-full absolute -top-1 -right-1 p-0.5" />
-                      )}
-                      {isPending && (
-                        <Loader2 className="h-3 w-3 text-yellow-500 absolute -top-1 -right-1 animate-spin" />
+                        <CheckIcon className="h-3 w-3 bg-background rounded-full p-0.5 text-black absolute -top-1 -right-1" />
                       )}
                     </Button>
                   );

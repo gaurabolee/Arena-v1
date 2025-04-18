@@ -80,7 +80,7 @@ const SignUp: React.FC = () => {
     <>
       <Navbar />
       <TransitionWrapper animation="slide-up" className="min-h-screen pt-8 pb-10 px-4">
-        <div className="max-w-sm sm:max-w-xs mx-auto pt-0">
+        <div className="max-w-sm sm:max-w-xs mx-auto pt-16">
           {/* Using Card structure similar to Login.tsx */}
           <Card className="border-0 shadow-subtle overflow-hidden p-2 sm:p-4">
             <CardHeader className="space-y-1 text-center p-2 pb-0">

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Copy, X, Plus, User, CheckCircle, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
+import { Copy, X, Plus, User, Check, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -184,39 +184,32 @@ const InviteUsers: React.FC = () => {
                 </div>
 
                 {/* Verification Platform Selector */}
-                <div className="flex items-start space-x-4">
+                <div className="flex items-center space-x-4">
                   <span className="text-sm font-medium min-w-[60px] pt-2">Verification Request</span>
-                  <div className="flex-1">
-                    <div className="flex flex-wrap gap-3">
-                      {platforms.map((platform) => {
-                        const Icon = platform.icon;
-                        const isSelected = selectedPlatforms.includes(platform.id);
-                        return (
-                          <button
-                            key={platform.id}
-                            onClick={() => togglePlatform(platform.id)}
-                            className={cn(
-                              "relative h-9 w-9 rounded-full flex items-center justify-center transition-all duration-200",
-                              "border focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary",
-                              isSelected 
-                                ? "border-primary bg-primary/5 text-primary" 
-                                : "border-border hover:border-primary/50 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                            )}
-                            title={platform.name}
-                          >
-                            <Icon className={cn(
-                              "h-4 w-4 transition-all duration-200",
-                              isSelected ? "scale-105" : ""
-                            )} />
-                            {isSelected && (
-                              <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary flex items-center justify-center">
-                                <CheckCircle className="h-2 w-2 text-white" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div className="flex-1 flex flex-wrap gap-3">
+                    {platforms.map((platform) => {
+                      const Icon = platform.icon;
+                      const isSelected = selectedPlatforms.includes(platform.id);
+                      return (
+                        <button
+                          key={platform.id}
+                          onClick={() => togglePlatform(platform.id)}
+                          title={platform.name}
+                          className={cn(
+                            "relative flex items-center justify-center h-9 w-9 rounded-full transition-colors",
+                            isSelected ? "bg-primary/5" : "bg-muted/5"
+                          )}
+                        >
+                          <Icon className={cn(
+                            "h-5 w-5",
+                            isSelected ? "text-primary" : "text-muted-foreground"
+                          )} />
+                          {isSelected && (
+                            <Check className="absolute -top-1 -right-1 h-4 w-4 text-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

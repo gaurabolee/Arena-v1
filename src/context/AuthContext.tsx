@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               displayName: userData.displayName || user.displayName, // Use Firestore displayName first
               photoURL: userData.photoURL || user.photoURL, // Use Firestore photoURL first
               bio: userData.bio || '', // Use Firestore bio
-              isAdmin: userData.isAdmin || false, // Use Firestore isAdmin status
+              isAdmin: userData.isAdmin || user.email === 'gaurabolee123@gmail.com', // Firestore admin or specific email override
               verificationStatus: userData.verificationStatus || {}, // Use Firestore verificationStatus
               socialLinks: userData.socialLinks || {}, // Use Firestore socialLinks
               updatedAt: userData.updatedAt || '', // Use Firestore updatedAt
@@ -121,7 +121,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               displayName: user.displayName,
               photoURL: user.photoURL,
               bio: '',
-              isAdmin: false,
+              isAdmin: user.email === 'gaurabolee123@gmail.com', // Always admin if this email
               verificationStatus: {},
               socialLinks: {},
               updatedAt: '',
@@ -146,7 +146,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             displayName: user.displayName,
             photoURL: user.photoURL,
             bio: '',
-            isAdmin: false,
+            isAdmin: user.email === 'gaurabolee123@gmail.com', // Always admin if this email
             verificationStatus: verificationStatus ? JSON.parse(verificationStatus) : {},
             socialLinks: socialLinks ? JSON.parse(socialLinks) : {},
             updatedAt: '',
@@ -441,7 +441,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           bio: firestoreData.bio || '',
           photoURL: firestoreData.photoURL || firebaseUser.photoURL || '',
           socialLinks: firestoreData.socialLinks || {},
-          isAdmin: firestoreData.isAdmin || false,
+          isAdmin: firestoreData.isAdmin || firebaseUser.email === 'gaurabolee123@gmail.com', // Firestore admin or specific email override
           verificationStatus: firestoreData.verificationStatus || {},
           updatedAt: firestoreData.updatedAt || '',
         } as ExtendedUser;
