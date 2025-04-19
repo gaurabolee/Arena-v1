@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, ExtendedUser } from '@/context/AuthContext';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import TransitionWrapper from '@/components/TransitionWrapper';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { User, Linkedin, Facebook, Instagram, Youtube, CheckCircle } from 'lucide-react';
 import Logo from '@/components/Logo';
+import ProfileCard from '@/components/ProfileCard';
 
 // Custom TikTok icon
 const TikTokIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
@@ -32,7 +33,20 @@ const InvitePreview: React.FC = () => {
   const recipientName = searchParams.get('name');
   const topics = searchParams.get('topics')?.split(',') || [];
   const [verificationPlatforms, setVerificationPlatforms] = useState<string[]>([]);
-  const profileUser = username ? findUserByUsername(username) : null;
+  const [profileUserData, setProfileUserData] = useState<ExtendedUser | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      if (!username) {
+        setLoadingUser(false);
+        return;
+      }
+      const user = await findUserByUsername(username);
+      setProfileUserData(user);
+      setLoadingUser(false);
+    })();
+  }, [username]);
 
   // Define platforms with their icons
   const platforms = [
@@ -80,8 +94,15 @@ const InvitePreview: React.FC = () => {
     toast.info('Topics modification will be implemented soon');
   };
 
-  // If no user is found, show a message
-  if (!profileUser) {
+  if (loadingUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!profileUserData) {
     return (
       <div className="min-h-screen bg-background">
         {/* Arena Logo */}
@@ -129,70 +150,18 @@ const InvitePreview: React.FC = () => {
                   <p>You have been invited to text in Public with:</p>
                 </div>
 
-                {/* Profile Card */}
-                <Card 
-                  className="transition-all duration-200 hover:shadow-md hover:border-primary/50 cursor-pointer"
-                  onClick={() => {
-                    window.open(`/profile/${username}`, '_blank');
+                {/* Unified Profile Card */}
+                <ProfileCard
+                  user={{
+                    name: profileUserData.name,
+                    username: profileUserData.username,
+                    photoURL: profileUserData.photoURL,
+                    bio: profileUserData.bio,
+                    socialLinks: profileUserData.socialLinks || {},
+                    verificationStatus: profileUserData.verificationStatus || {},
                   }}
-                >
-                  <CardHeader className="pb-4">
-                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                      <div className="relative">
-                        <Avatar className="h-20 w-20">
-                          <AvatarImage 
-                            src={profileUser.photoURL || undefined} 
-                            alt={profileUser.name}
-                            className="object-cover"
-                          />
-                          <AvatarFallback>
-                            {profileUser.name ? profileUser.name.charAt(0).toUpperCase() : <User className="h-12 w-12" />}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      
-                      <div className="text-center sm:text-left">
-                        <CardTitle className="text-2xl font-medium mb-1">{profileUser.name}</CardTitle>
-                        <CardDescription>@{profileUser.username}</CardDescription>
-                        
-                        <p className="mt-3 text-muted-foreground">
-                          {profileUser.bio || 'Tell us about yourself...'}
-                        </p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {/* Verified Social Accounts */}
-                      <div className="space-y-2">
-                        <h3 className="font-medium">Verified Accounts</h3>
-                        <div className="flex flex-wrap gap-3">
-                          {Object.entries(profileUser.socialLinks || {}).map(([platform, url]) => {
-                            if (!url) return null;
-                            
-                            const platformInfo = platforms.find(p => p.id === platform);
-                            if (!platformInfo) return null;
-                            
-                            const Icon = platformInfo.icon;
-                            const status = profileUser?.verificationStatus?.[platform]?.status;
-                            
-                            // Only show verified accounts
-                            if (status !== 'verified') return null;
-                            
-                            return (
-                              <div key={platform} className="flex items-center space-x-1">
-                                <div className="h-5 w-5 rounded-full flex items-center justify-center text-primary bg-primary/5">
-                                  <Icon className="h-3 w-3" />
-                                </div>
-                                <span className="text-sm">{platformInfo.name}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  showActions={false}
+                />
 
                 {/* Topics Section */}
                 <div className="space-y-2">
@@ -262,4 +231,4 @@ const InvitePreview: React.FC = () => {
   );
 };
 
-export default InvitePreview; 
+export default InvitePreview;

@@ -10,10 +10,10 @@ import { toast } from 'sonner';
 import { Copy, X, Plus, User, Check, Linkedin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import ProfileCard from '@/components/ProfileCard';
 
 const TikTokIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -34,7 +34,7 @@ const InviteUsers: React.FC = () => {
   const [currentTopic, setCurrentTopic] = useState('');
   const [topics, setTopics] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['linkedin']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   
   const handleAddTopic = () => {
     if (currentTopic.trim() && !topics.includes(currentTopic.trim())) {
@@ -204,9 +204,6 @@ const InviteUsers: React.FC = () => {
                             "h-5 w-5",
                             isSelected ? "text-primary" : "text-muted-foreground"
                           )} />
-                          {isSelected && (
-                            <Check className="absolute -top-1 -right-1 h-4 w-4 text-primary" />
-                          )}
                         </button>
                       );
                     })}
@@ -227,58 +224,17 @@ const InviteUsers: React.FC = () => {
                   </div>
 
                   {/* Profile Card */}
-                  <Card className="mb-6">
-                    <CardHeader className="pb-4">
-                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                        <div className="relative">
-                          <Avatar className="h-20 w-20">
-                            <AvatarImage 
-                              src={currentUser?.photoURL || undefined} 
-                              alt={currentUser?.name}
-                              className="object-cover"
-                            />
-                            <AvatarFallback>
-                              {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : <User className="h-12 w-12" />}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        
-                        <div className="text-center sm:text-left">
-                          <CardTitle className="text-2xl font-medium mb-1">{currentUser?.name}</CardTitle>
-                          <CardDescription>@{currentUser?.username}</CardDescription>
-                          <p className="mt-3 text-muted-foreground">
-                            {currentUser?.bio || 'Tell us about yourself...'}
-                          </p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {/* Verified Social Accounts */}
-                        <div className="space-y-2">
-                          <h3 className="font-medium">Verified Accounts</h3>
-                          <div className="flex flex-wrap gap-3">
-                            {Object.entries(currentUser?.socialLinks || {}).map(([platform, url]) => {
-                              if (!url) return null;
-                              
-                              const platformInfo = platforms.find(p => p.id === platform);
-                              if (!platformInfo) return null;
-                              
-                              const Icon = platformInfo.icon;
-                              return (
-                                <div key={platform} className="flex items-center space-x-1">
-                                  <div className="h-5 w-5 rounded-full flex items-center justify-center text-primary bg-primary/5">
-                                    <Icon className="h-3 w-3" />
-                                  </div>
-                                  <span className="text-sm">{platformInfo.name}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <ProfileCard
+                    user={{
+                      name: currentUser?.name || '',
+                      username: currentUser?.username || '',
+                      photoURL: currentUser?.photoURL,
+                      bio: currentUser?.bio,
+                      socialLinks: currentUser?.socialLinks || {},
+                      topics: topics,
+                    }}
+                    showActions={false}
+                  />
 
                   {/* Topics Section */}
                   <div className="space-y-2">
@@ -292,45 +248,46 @@ const InviteUsers: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Verification Display */}
-                  <div className="flex flex-wrap gap-2 text-sm bg-muted/30 px-3 py-2 rounded-md">
-                    <span className="font-medium mr-1">Verification requested</span>
-                    {selectedPlatforms.map(platformId => {
-                      const platform = platforms.find(p => p.id === platformId);
-                      if (!platform) return null;
-                      
-                      const Icon = platform.icon;
-                      return (
-                        <div key={platformId} className="flex items-center space-x-1">
-                          <div className="h-5 w-5 rounded-full flex items-center justify-center text-primary bg-primary/5">
-                            <Icon className="h-3 w-3" />
+                  {/* Verification requested */}
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm font-medium min-w-[60px] pt-2">Verification requested</span>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedPlatforms.map(platformId => {
+                        const platform = platforms.find(p => p.id === platformId);
+                        if (!platform) return null;
+                        const Icon = platform.icon;
+                        return (
+                          <div key={platformId} className="relative h-7 w-7">
+                            <div className="h-7 w-7 rounded-full flex items-center justify-center text-primary bg-primary/5">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            
                           </div>
-                          <span>{platform.name}</span>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Action Buttons */}
                   <div className="flex justify-between items-center pt-4">
                     <Button 
-                      onClick={handleAccept} 
                       variant="outline"
                       className="w-28"
+                      disabled
                     >
                       Accept
                     </Button>
                     <Button 
                       variant="outline" 
-                      onClick={handleModifyTopics}
                       className="w-28"
+                      disabled
                     >
                       Edit Topics
                     </Button>
                     <Button 
                       variant="outline" 
-                      onClick={handleDecline}
                       className="w-28"
+                      disabled
                     >
                       Decline
                     </Button>

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 // Define the SocialLinks type
 export interface SocialLinks {
+  [key: string]: string | undefined;
   linkedin?: string;
   twitter?: string;
   facebook?: string;
