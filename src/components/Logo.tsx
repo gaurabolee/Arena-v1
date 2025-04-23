@@ -33,7 +33,7 @@ const Logo: React.FC<LogoProps> = ({
         }} 
       />
       <div 
-        className="bg-black rounded-full -ml-[1px]" 
+        className="bg-black rounded-full -ml-[1px] dark:border dark:border-white" 
         style={{ 
           width: size / 2, 
           height: size / 2

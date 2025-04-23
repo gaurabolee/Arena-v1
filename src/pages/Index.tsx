@@ -113,9 +113,7 @@ const Index: React.FC = () => {
       <Navbar />
       <TransitionWrapper animation="fade" className="min-h-screen">
         {/* Hero Section */}
-        <section className="relative flex min-h-screen items-center justify-center overflow-hidden pt-0 -mt-16">
-          <div className="absolute inset-0 -z-10 bg-[radial-gradient(45%_50%_at_50%_50%,rgba(247,248,250,0.8)_0%,rgba(247,248,250,0)_100%)]" />
-          
+        <section className="relative flex min-h-screen items-center justify-center pt-0 -mt-16">
           <div className="w-full max-w-6xl px-4 py-12 text-center sm:px-6 mx-px lg:px-[34px] my-[7px]">
             <TransitionWrapper animation="slide-up" className="space-y-6">
               <div className="inline-flex items-center rounded-full border bg-background px-3 py-1 text-sm">
@@ -154,13 +152,13 @@ const Index: React.FC = () => {
         </section>
 
         {/* Past Discussions Section */}
-        <section id="past-discussions" className="py-16 flex flex-col items-center justify-center min-h-screen bg-muted/5">
+        <section id="past-discussions" className="py-16 flex flex-col items-center justify-center min-h-screen bg-muted/5 dark:bg-background">
           <div className="w-full px-4 max-w-4xl mx-auto">
             <TransitionWrapper animation="fade" className="w-full">
               <div className="space-y-8">
                 <div className="space-y-8">
                   {sampleConversations.map((conversation) => (
-                    <Card key={conversation.id} className="overflow-hidden transition-all duration-200 hover:shadow-md hover:border-primary/50">
+                    <Card key={conversation.id} className="transition-all duration-200 hover:shadow-md hover:border-primary/50">
                       <CardContent className="p-0">
                         {/* Main Topic as Header */}
                         <div className="bg-muted/5 px-6 py-4 border-b">

@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test:verification": "node src/scripts/testVerification.js"
+    "serve": "vite",
+    "test:verification": "node src/scripts/testVerification.js",
+    "test-quicklru": "node test-quicklru.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

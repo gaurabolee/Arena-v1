@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { User, Home, Bell, MessageCircle, Share2, LogIn, UserPlus, Search, LogOut } from 'lucide-react';
+import { User, Home, Bell, MessageCircle, Share2, LogIn, UserPlus, Search, LogOut, Sun, Moon } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { useTheme } from '@/context/ThemeContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { signOut } from 'firebase/auth';
@@ -18,6 +19,7 @@ const Navbar: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const { currentUser, loading } = useAuth();
   const { unreadBellCount, unreadMessageCount } = useNotifications();
+  const { theme, toggleTheme } = useTheme();
 
   const isLandingPage = location.pathname === '/';
   const isAuthPage = ['/login', '/register'].includes(location.pathname);
@@ -135,7 +137,7 @@ const Navbar: React.FC = () => {
                       size="sm" 
                       className={cn(
                         "rounded-full p-2 w-9 h-9 transition-all duration-200 flex items-center justify-center",
-                        location.pathname === link.path ? "bg-gray-200" : ""
+                        location.pathname === link.path ? "bg-muted/20 dark:bg-muted/50" : ""
                       )}
                       aria-label={link.name}
                     >
@@ -179,7 +181,7 @@ const Navbar: React.FC = () => {
                   size="sm" 
                   className={cn(
                     "rounded-full p-0 w-9 h-9 transition-all duration-200",
-                    isProfilePage ? "bg-gray-200" : ""
+                    isProfilePage ? "bg-muted/20 dark:bg-muted/50" : ""
                   )} 
                   aria-label="Your profile"
                 >
@@ -210,6 +212,9 @@ const Navbar: React.FC = () => {
               )}
             </>
           )}
+          <Button variant="ghost" size="sm" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </Button>
         </div>
       </div>
     </header>

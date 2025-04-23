@@ -45,6 +45,36 @@
     --sidebar-ring: 217 91% 60%;
   }
 
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 210 40% 92%;
+    --card: 0 0% 0%;
+    --card-foreground: 210 40% 92%;
+    --popover: 0 0% 0%;
+    --popover-foreground: 210 40% 92%;
+    --ring: 210 40% 70%;
+    --sidebar-background: 0 0% 0%;
+    --sidebar-foreground: 210 40% 92%;
+    --sidebar-primary: 210 40% 20%;
+    --sidebar-primary-foreground: 210 40% 92%;
+    --sidebar-accent: 0 0% 0%;
+    --sidebar-accent-foreground: 210 40% 92%;
+    --sidebar-border: 210 40% 30%;
+    --sidebar-ring: 210 40% 92%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 210 40% 20%;
+    --secondary-foreground: 210 40% 92%;
+    --muted: 0 0% 0%;
+    --muted-foreground: 210 40% 65%;
+    --accent: 0 0% 0%;
+    --accent-foreground: 210 40% 92%;
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 210 40% 30%;
+    --input: 210 40% 20%;
+  }
+
   * {
     @apply border-border;
   }
@@ -65,11 +95,11 @@
 
 @layer components {
   .glass {
-    @apply bg-white/60 backdrop-blur-lg border border-white/20 shadow-subtle;
+    @apply bg-white/60 dark:bg-black/60 backdrop-blur-lg border border-white/20 dark:border-black/20 shadow-subtle;
   }
   
   .glassmorphism {
-    @apply bg-white/80 backdrop-blur-md border border-white/40 shadow-subtle;
+    @apply bg-white/80 dark:bg-black/80 backdrop-blur-md border border-white/40 dark:border-black/40 shadow-subtle;
   }
   
   .button-effect {
