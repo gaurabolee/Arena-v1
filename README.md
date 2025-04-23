@@ -1,14 +1,47 @@
-# Arena
+# Arena V1
 
-The world's first public text event platform. Create topics, invite guests, exchange ideas, challenge perspectives, and grow through thoughtful discussions.
+A modern React application built with Vite, TypeScript, and Tailwind CSS.
 
 ## Features
 
-- Public conversations between thought leaders
-- Real-time engagement metrics
-- Topic-based discussions
-- Beautiful, modern UI
-- Responsive design
+- ⚡️ Vite for fast development and building
+- ⚛️ React 18 with TypeScript
+- 🎨 Tailwind CSS for styling
+- 📦 Modern package management with npm
+
+## Getting Started
+
+1. Clone the repository
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+4. Open [http://localhost:5173](http://localhost:5173) in your browser
+
+## Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+
+## Project Structure
+
+```
+src/
+  ├── components/     # Reusable UI components
+  ├── pages/         # Page components
+  ├── hooks/         # Custom React hooks
+  ├── utils/         # Utility functions
+  ├── types/         # TypeScript type definitions
+  ├── assets/        # Static assets
+  ├── App.tsx        # Main App component
+  └── main.tsx       # Application entry point
+```
 
 ## Tech Stack
 
@@ -17,34 +50,6 @@ The world's first public text event platform. Create topics, invite guests, exch
 - Tailwind CSS
 - Firebase (Auth & Firestore)
 - shadcn/ui components
-
-## Getting Started
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/Arena.git
-cd Arena
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Create a `.env` file in the root directory with your Firebase credentials:
-```
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-```
-
-4. Start the development server:
-```bash
-npm run dev
-```
 
 ## Contributing
 
