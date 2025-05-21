@@ -93,7 +93,7 @@ const generateVerificationSymbol = () => {
 };
 
 const Profile: React.FC<ProfileProps> = () => {
-  const { currentUser, logout, updateProfile: updateContextProfile, isEditing, setIsEditing, makeAdmin } = useAuth();
+  const { currentUser, logout, updateProfile: updateContextProfile, isEditing, setIsEditing } = useAuth();
   const navigate = useNavigate();
   const { username } = useParams();
   const [formData, setFormData] = useState({
@@ -344,9 +344,14 @@ const Profile: React.FC<ProfileProps> = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
   };
 
   const inviteSchema = z.object({
@@ -735,39 +740,6 @@ const Profile: React.FC<ProfileProps> = () => {
     navigator.clipboard.writeText(text);
     toast.success('Verification code copied!');
   };
-
-  const handleMakeAdmin = async () => {
-    if (currentUser) {
-      try {
-        await updateContextProfile({ isAdmin: true });
-        toast.success('You are now an admin!');
-      } catch (error) {
-        console.error('Error making user admin:', error);
-        toast.error('Failed to set admin status');
-      }
-    }
-  };
-
-  const makeAdminDirectly = async () => {
-    if (!currentUser) return;
-    
-    try {
-      const userRef = doc(db, 'users', currentUser.uid);
-      await setDoc(userRef, { isAdmin: true }, { merge: true });
-      
-      const updatedUser = {
-        ...currentUser,
-        isAdmin: true
-      };
-      
-      await updateContextProfile(updatedUser);
-      
-      toast.success('You are now an admin!');
-    } catch (error) {
-      console.error('Error making admin:', error);
-      toast.error('Failed to set admin status');
-    }
-  }
 
   if (!currentUser) {
     return (
@@ -1328,30 +1300,6 @@ const Profile: React.FC<ProfileProps> = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {currentUser?.isAdmin && (
-        <div className="mt-4 p-4 bg-green-100 rounded">
-          <p className="text-green-800">You are an admin! ✨</p>
-          <Link 
-            to="/admin"
-            className="mt-2 inline-block bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded"
-          >
-            Go to Admin Panel
-          </Link>
-        </div>
-      )}
-
-      {currentUser?.email === 'gaurabolee123@gmail.com' && !currentUser?.isAdmin && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-          <Button 
-            onClick={makeAdminDirectly}
-            variant="outline"
-            className="w-full"
-          >
-            Make Admin
-          </Button>
-        </div>
-      )}
     </>
   );
 };

@@ -82,6 +82,11 @@ const Register: React.FC = () => {
       toast.error('Passwords do not match');
       return;
     }
+
+    if (formData.password.length < 6) {
+      toast.error('Password must be at least 6 characters long');
+      return;
+    }
     
     try {
       setIsLoading(true);
@@ -100,10 +105,6 @@ const Register: React.FC = () => {
         } : undefined
       );
       
-      // Registration success
-      // Remove the duplicate toast message
-      // toast.success('Account created successfully! Welcome to Arena.');
-      
       // Navigate to profile page with edit mode open
       navigate('/profile', {
         replace: true,
@@ -113,9 +114,10 @@ const Register: React.FC = () => {
           verificationPlatforms: isInvitation ? verificationPlatforms : undefined
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      toast.error('An error occurred during registration');
+      // Display the specific error message from the registration function
+      toast.error(error.message || 'An error occurred during registration');
     } finally {
       setIsLoading(false);
     }

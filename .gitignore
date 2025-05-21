@@ -12,11 +12,11 @@
 
 # Misc
 .DS_Store
-.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env
 
 # Logs
 npm-debug.log*
@@ -24,11 +24,15 @@ yarn-debug.log*
 yarn-error.log*
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
 .idea
+.vscode
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
-*.sw? 
+*.sw?
+
+# Firebase
+firebase-debug.log
+firestore.indexes.json
+firestore.rules 
