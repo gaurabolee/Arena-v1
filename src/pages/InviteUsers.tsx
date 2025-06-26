@@ -141,6 +141,27 @@ const InviteUsers: React.FC = () => {
     setCustomDuration('');
   };
 
+  // Tiered pricing helper functions
+  const calculateServiceFee = (amount: number) => {
+    if (amount <= 50) {
+      return amount * 0.05; // 5% for $0-50
+    } else if (amount <= 200) {
+      return amount * 0.04; // 4% for $51-200
+    } else {
+      return amount * 0.03; // 3% for $201+
+    }
+  };
+
+  const getServiceFeePercentage = (amount: number) => {
+    if (amount <= 50) return 5;
+    if (amount <= 200) return 4;
+    return 3;
+  };
+
+  const getTotalAmount = (amount: number) => {
+    return amount + calculateServiceFee(amount);
+  };
+
   const handleAddTopic = () => {
     if (currentTopic.trim() && !topics.includes(currentTopic.trim())) {
       setTopics([...topics, currentTopic.trim()]);
@@ -737,8 +758,46 @@ const InviteUsers: React.FC = () => {
 
                   {showPaymentSection && (
                     <div className="pl-6 space-y-4 pt-2">
-                      {/* Payment Method Selection - Show First */}
-                      {!paymentMethod && (
+                      {/* Offer Amount - Show First */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Offer Amount</Label>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-muted-foreground text-lg font-medium">$</span>
+                          <Input
+                            type="number"
+                            placeholder="0.00"
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(e.target.value)}
+                            className="flex-1"
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Service Fee Breakdown - Show immediately when amount is entered */}
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && (
+                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
+                          <h4 className="text-sm font-medium">Payment Breakdown</h4>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex justify-between">
+                              <span>Offer Amount:</span>
+                              <span>${paymentAmount}</span>
+                            </div>
+                            <div className="flex justify-between text-muted-foreground">
+                              <span>Arena Service Fee ({getServiceFeePercentage(parseFloat(paymentAmount))}%):</span>
+                              <span>${calculateServiceFee(parseFloat(paymentAmount)).toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between font-medium border-t pt-1">
+                              <span>Total to Pay:</span>
+                              <span>${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Payment Method Selection - Show after amount */}
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && !paymentMethod && (
                         <div className="space-y-3">
                           <div className="space-y-2">
                             <Label className="text-sm font-medium">Choose Payment Method</Label>
@@ -863,46 +922,6 @@ const InviteUsers: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Offer Amount - Show after payment method is selected */}
-                      {paymentMethod && (
-                        <div className="space-y-2">
-                          <Label className="text-sm font-medium">Offer Amount</Label>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-muted-foreground text-lg font-medium">$</span>
-                            <Input
-                              type="number"
-                              placeholder="0.00"
-                              value={paymentAmount}
-                              onChange={(e) => setPaymentAmount(e.target.value)}
-                              className="flex-1"
-                              min="0"
-                              step="0.01"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Service Fee Breakdown */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && (
-                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
-                          <h4 className="text-sm font-medium">Payment Breakdown</h4>
-                          <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span>Offer Amount:</span>
-                              <span>${paymentAmount}</span>
-                            </div>
-                            <div className="flex justify-between text-muted-foreground">
-                              <span>Arena Service Fee (10%):</span>
-                              <span>${(parseFloat(paymentAmount) * 0.1).toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between font-medium border-t pt-1">
-                              <span>Total to Pay:</span>
-                              <span>${(parseFloat(paymentAmount) * 1.1).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
                       {/* Security & Trust Indicators */}
                       <div className="space-y-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
                         <h4 className="text-sm font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
@@ -945,7 +964,7 @@ const InviteUsers: React.FC = () => {
                           ) : (
                             <>
                               <Shield className="h-4 w-4 mr-2" />
-                              Authorize ${(parseFloat(paymentAmount) * 1.1).toFixed(2)} Payment
+                              Authorize ${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)} Payment
                             </>
                           )}
                         </Button>
@@ -1127,12 +1146,12 @@ const InviteUsers: React.FC = () => {
                             <span className="font-medium">${paymentAmount}</span>
                           </div>
                           <div className="flex justify-between text-muted-foreground">
-                            <span>Arena Service Fee (10%):</span>
-                            <span>${(parseFloat(paymentAmount) * 0.1).toFixed(2)}</span>
+                            <span>Arena Service Fee ({getServiceFeePercentage(parseFloat(paymentAmount))}%):</span>
+                            <span>${calculateServiceFee(parseFloat(paymentAmount)).toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between font-medium border-t pt-1 text-green-700 dark:text-green-300">
                             <span>Total Paid:</span>
-                            <span>${(parseFloat(paymentAmount) * 1.1).toFixed(2)}</span>
+                            <span>${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)}</span>
                           </div>
                         </div>
 
