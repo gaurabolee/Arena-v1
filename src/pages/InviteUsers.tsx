@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Copy, X, Plus, User, Check, Linkedin, Facebook, Instagram, Youtube, ChevronDown, ChevronUp, DollarSign, Clock, FileText, Shield, Upload } from 'lucide-react';
+import { Copy, X, Plus, User, Check, Linkedin, Facebook, Instagram, Youtube, ChevronDown, ChevronUp, DollarSign, Clock, FileText, Shield, Upload, CreditCard } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import ProfileCard from '@/components/ProfileCard';
+import { loadStripe } from '@stripe/stripe-js';
 
 const TikTokIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -39,14 +40,106 @@ const InviteUsers: React.FC = () => {
   // New state for payment and event features
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
-  const [eventType, setEventType] = useState('length'); // 'length' or 'time'
+  const [eventType, setEventType] = useState(''); // Empty string - no default selection
   const [eventParameter, setEventParameter] = useState('');
+  const [eventTimePeriod, setEventTimePeriod] = useState(''); // days for length-based
   const [showPaymentSection, setShowPaymentSection] = useState(false);
   const [showEventSection, setShowEventSection] = useState(false);
   
+  // Custom value states
+  const [customWordCount, setCustomWordCount] = useState('');
+  const [customTimePeriod, setCustomTimePeriod] = useState('');
+  const [customDuration, setCustomDuration] = useState('');
+  
   // Payment status states
-  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'uploaded' | 'held' | 'released' | 'refunded'>('pending');
+  const [paymentStatus, setPaymentStatus] = useState<'pending' | 'authorized' | 'cancelled' | 'completed'>('pending');
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+  
+  // Stripe Elements states
+  const [stripe, setStripe] = useState<any>(null);
+  const [elements, setElements] = useState<any>(null);
+  const [cardElement, setCardElement] = useState<any>(null);
+  const [showStripeForm, setShowStripeForm] = useState(false);
+  const [paymentIntentId, setPaymentIntentId] = useState('');
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
+  const [cardError, setCardError] = useState<string>('');
+  
+  // Stripe-like payment states
+  const [showPaymentMethodSelection, setShowPaymentMethodSelection] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [showPayPalOption, setShowPayPalOption] = useState(false);
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCVC, setCardCVC] = useState('');
+  const [cardholderName, setCardholderName] = useState('');
+
+  // Card validation states
+  const [cardNumberValid, setCardNumberValid] = useState(false);
+  const [cardExpiryValid, setCardExpiryValid] = useState(false);
+  const [cardCVCValid, setCardCVCValid] = useState(false);
+  const [cardholderNameValid, setCardholderNameValid] = useState(false);
+
+  // Card formatting helpers
+  const formatCardNumber = (value: string) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const matches = v.match(/\d{4,16}/g);
+    const match = matches && matches[0] || '';
+    const parts = [];
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4));
+    }
+    if (parts.length) {
+      return parts.join(' ');
+    } else {
+      return v;
+    }
+  };
+
+  const formatExpiry = (value: string) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    if (v.length >= 2) {
+      return v.substring(0, 2) + '/' + v.substring(2, 4);
+    }
+    return v;
+  };
+
+  // Event type helper functions
+  const getEventDisplayText = () => {
+    if (!eventParameter || !eventType) return '';
+    
+    if (eventType === 'length') {
+      const wordCount = eventParameter === 'custom' ? customWordCount : eventParameter;
+      if (!wordCount) return eventParameter === 'custom' ? 'Custom words' : '';
+      
+      const timeText = getTimePeriodText();
+      return timeText ? `${wordCount} words over ${timeText}` : `${wordCount} words`;
+    } else if (eventType === 'time') {
+      const duration = eventParameter === 'custom' ? customDuration : eventParameter;
+      return duration ? `${duration} min` : 'Custom min';
+    }
+    return '';
+  };
+
+  const getTimePeriodText = () => {
+    if (eventTimePeriod === 'custom') {
+      return customTimePeriod ? `${customTimePeriod} days` : '';
+    }
+    return eventTimePeriod ? `${eventTimePeriod} days` : '';
+  };
+
+  const shouldShowTimePeriod = () => {
+    if (eventType !== 'length') return false;
+    return (eventParameter && eventParameter !== 'custom') || 
+           (eventParameter === 'custom' && customWordCount);
+  };
+
+  const resetEventValues = () => {
+    setEventParameter('');
+    setCustomWordCount('');
+    setCustomTimePeriod('');
+    setCustomDuration('');
+  };
 
   const handleAddTopic = () => {
     if (currentTopic.trim() && !topics.includes(currentTopic.trim())) {
@@ -82,7 +175,11 @@ const InviteUsers: React.FC = () => {
     }));
     const encodedEvent = encodeURIComponent(JSON.stringify({
       type: eventType,
-      parameter: eventParameter
+      parameter: eventParameter,
+      customWordCount: eventParameter === 'custom' && eventType === 'length' ? customWordCount : null,
+      customTimePeriod: eventTimePeriod === 'custom' ? customTimePeriod : null,
+      customDuration: eventParameter === 'custom' && eventType === 'time' ? customDuration : null,
+      timePeriod: eventType === 'length' ? eventTimePeriod : null
     }));
     
     const inviteLink = `${baseUrl}/invite/${currentUser.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}&payment=${encodedPayment}&event=${encodedEvent}`;
@@ -116,8 +213,14 @@ const InviteUsers: React.FC = () => {
     (topics.length > 0 || currentTopic.trim()) && 
     paymentAmount && 
     paymentMethod && 
-    eventParameter &&
-    paymentStatus === 'uploaded';
+    ((eventParameter && eventParameter !== 'custom') || 
+     (eventParameter === 'custom' && 
+      ((eventType === 'length' && customWordCount) || 
+       (eventType === 'time' && customDuration)))) &&
+    (eventType !== 'length' || 
+     (eventTimePeriod && 
+      (eventTimePeriod !== 'custom' || (eventTimePeriod === 'custom' && customTimePeriod)))) &&
+    paymentStatus === 'authorized';
 
   const handleAccept = () => {
     // TODO: Implement accept logic
@@ -157,15 +260,142 @@ const InviteUsers: React.FC = () => {
       return;
     }
 
-    setIsPaymentProcessing(true);
-    
-    // Simulate payment processing
-    setTimeout(() => {
-      setPaymentStatus('uploaded');
-      setIsPaymentProcessing(false);
-      toast.success('Payment uploaded successfully! Money is now held securely by Arena.');
-    }, 2000);
+    if (paymentMethod === 'stripe') {
+      if (!stripe || !cardElement) {
+        toast.error('Payment system not ready. Please try again.');
+        return;
+      }
+
+      setIsAuthorizing(true);
+      
+      try {
+        // Simulate creating a payment intent (in real implementation, this would be done on your backend)
+        const paymentIntent = {
+          client_secret: 'pi_test_secret_' + Math.random().toString(36).substr(2, 9)
+        };
+        
+        // Confirm the card payment
+        const { error, paymentIntent: confirmedIntent } = await stripe.confirmCardPayment(
+          paymentIntent.client_secret,
+          {
+            payment_method: {
+              card: cardElement,
+              billing_details: {
+                name: 'Test User', // In real app, get from form
+              },
+            },
+          }
+        );
+
+        if (error) {
+          setPaymentStatus('cancelled');
+          setCardError(error.message || 'Payment failed');
+          toast.error('Payment authorization failed: ' + error.message);
+        } else {
+          setPaymentStatus('authorized');
+          setPaymentIntentId(confirmedIntent?.id || '');
+          setCardError('');
+          toast.success('Payment authorized! Amount will be charged after event completion.');
+        }
+      } catch (err) {
+        setPaymentStatus('cancelled');
+        setCardError('Payment authorization failed');
+        toast.error('Payment authorization failed. Please try again.');
+      } finally {
+        setIsAuthorizing(false);
+      }
+    } else {
+      setIsPaymentProcessing(true);
+      
+      // Simulate other payment processing
+      setTimeout(() => {
+        setPaymentStatus('authorized');
+        setIsPaymentProcessing(false);
+        toast.success('Payment uploaded successfully! Money is now held securely by Arena.');
+      }, 2000);
+    }
   };
+
+  // Check if event section is complete (for form validation)
+  const isEventSectionComplete = eventType && 
+    ((eventParameter && eventParameter !== 'custom') || 
+     (eventParameter === 'custom' && 
+      ((eventType === 'length' && customWordCount) || 
+       (eventType === 'time' && customDuration)))) &&
+    (eventType !== 'length' || 
+     (eventTimePeriod && 
+      (eventTimePeriod !== 'custom' || (eventTimePeriod === 'custom' && customTimePeriod))));
+
+  // Auto-collapse event section when user interacts with other sections
+  const handleOtherSectionInteraction = () => {
+    if (showEventSection && isEventSectionComplete) {
+      setShowEventSection(false);
+    }
+  };
+
+  // Auto-collapse event section when complete
+  useEffect(() => {
+    if (isEventSectionComplete && showEventSection) {
+      // Add a small delay to allow the user to see the completion
+      const timer = setTimeout(() => {
+        setShowEventSection(false);
+      }, 1000); // 1 second delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isEventSectionComplete]); // Only trigger when completion status changes
+
+  // Initialize Stripe
+  useEffect(() => {
+    const initializeStripe = async () => {
+      // For now, using a placeholder key - replace with your actual publishable key
+      const stripeInstance = await loadStripe('pk_test_placeholder_key');
+      setStripe(stripeInstance);
+    };
+    
+    initializeStripe();
+  }, []);
+
+  // Mount Stripe Elements when form is shown
+  useEffect(() => {
+    if (stripe && showStripeForm && !elements) {
+      const elementsInstance = stripe.elements();
+      setElements(elementsInstance);
+      
+      const cardElementInstance = elementsInstance.create('card', {
+        style: {
+          base: {
+            fontSize: '14px',
+            color: 'var(--foreground)',
+            '::placeholder': {
+              color: 'var(--muted-foreground)',
+            },
+            backgroundColor: 'transparent',
+          },
+        },
+      });
+      
+      setCardElement(cardElementInstance);
+      cardElementInstance.mount('#card-element');
+      
+      // Add validation listeners
+      cardElementInstance.on('change', (event: any) => {
+        setCardComplete(event.complete);
+        setCardError(event.error ? event.error.message : '');
+      });
+    }
+
+    // Cleanup when form is closed
+    return () => {
+      if (cardElement && !showStripeForm) {
+        cardElement.destroy();
+        setCardElement(null);
+        setElements(null);
+        setCardComplete(false);
+        setCardError('');
+      }
+    };
+  }, [stripe, showStripeForm, elements, cardElement]);
 
   return (
     <>
@@ -186,6 +416,7 @@ const InviteUsers: React.FC = () => {
                     placeholder="Enter recipient's name"
                     value={recipientName}
                     onChange={(e) => setRecipientName(e.target.value)}
+                    onFocus={handleOtherSectionInteraction}
                     className="flex-1"
                   />
                 </div>
@@ -200,11 +431,15 @@ const InviteUsers: React.FC = () => {
                         value={currentTopic}
                         onChange={(e) => setCurrentTopic(e.target.value)}
                         onKeyPress={handleKeyPress}
+                        onFocus={handleOtherSectionInteraction}
                         className="flex-1"
                       />
                       <Button 
                         size="icon"
-                        onClick={handleAddTopic}
+                        onClick={() => {
+                          handleAddTopic();
+                          handleOtherSectionInteraction();
+                        }}
                         disabled={!currentTopic.trim()}
                         className="shrink-0"
                       >
@@ -256,9 +491,9 @@ const InviteUsers: React.FC = () => {
                         <span className="text-sm font-medium">Event Type</span>
                         <p className="text-xs text-muted-foreground">Choose length or time-based</p>
                       </div>
-                      {eventParameter && (
+                      {eventParameter && eventType && (
                         <Badge variant="secondary" className="text-xs">
-                          {eventType === 'length' ? `${eventParameter} words` : `${eventParameter} min`}
+                          {getEventDisplayText()}
                         </Badge>
                       )}
                     </div>
@@ -271,45 +506,201 @@ const InviteUsers: React.FC = () => {
 
                   {showEventSection && (
                     <div className="pl-6 space-y-3 pt-1">
-                      <div className="space-y-1.5">
+                      {/* Event Type Selection - Radio buttons instead of dropdown */}
+                      <div className="space-y-3">
                         <Label className="text-sm font-medium">Event Type</Label>
-                        <div className="flex space-x-2">
-                          <Button
-                            type="button"
-                            variant={eventType === 'length' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setEventType('length')}
-                            className="flex-1"
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => {
+                              setEventType('length');
+                              resetEventValues();
+                            }}
+                            className={cn(
+                              "flex flex-col items-center gap-3 p-4 rounded-lg border transition-all duration-200",
+                              eventType === 'length' 
+                                ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                : "border-border hover:border-border/60 hover:bg-muted/30"
+                            )}
                           >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Length-based
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={eventType === 'time' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setEventType('time')}
-                            className="flex-1"
+                            <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                              <FileText className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="text-center">
+                              <span className="text-sm font-medium">Length-based</span>
+                              <p className="text-xs text-muted-foreground mt-1">Word count target</p>
+                            </div>
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setEventType('time');
+                              resetEventValues();
+                            }}
+                            className={cn(
+                              "flex flex-col items-center gap-3 p-4 rounded-lg border transition-all duration-200",
+                              eventType === 'time' 
+                                ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
+                                : "border-border hover:border-border/60 hover:bg-muted/30"
+                            )}
                           >
-                            <Clock className="h-4 w-4 mr-2" />
-                            Time-based
-                          </Button>
+                            <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900/30">
+                              <Clock className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div className="text-center">
+                              <span className="text-sm font-medium">Time-based</span>
+                              <p className="text-xs text-muted-foreground mt-1">Live discussion</p>
+                            </div>
+                          </button>
                         </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <Label className="text-sm font-medium">
-                          {eventType === 'length' ? 'Word Count' : 'Duration (minutes)'}
-                        </Label>
-                        <Input
-                          type="number"
-                          placeholder={eventType === 'length' ? '300' : '20'}
-                          value={eventParameter}
-                          onChange={(e) => setEventParameter(e.target.value)}
-                          className="w-full"
-                          min="1"
-                        />
-                      </div>
+                      {/* Length-based Event Configuration */}
+                      {eventType === 'length' && (
+                        <div className="space-y-3 pl-4 border-l-2 border-blue-200 dark:border-blue-800">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Word Count</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {['300', '500', '1000'].map((count) => (
+                                <button
+                                  key={count}
+                                  onClick={() => setEventParameter(count)}
+                                  className={cn(
+                                    "p-3 rounded-lg border text-sm transition-all duration-200",
+                                    eventParameter === count 
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                      : "border-border hover:border-border/60 hover:bg-muted/30"
+                                  )}
+                                >
+                                  {count} words
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => setEventParameter('custom')}
+                                className={cn(
+                                  "p-3 rounded-lg border text-sm transition-all duration-200",
+                                  eventParameter === 'custom' 
+                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                    : "border-border hover:border-border/60 hover:bg-muted/30"
+                                )}
+                              >
+                                Custom
+                              </button>
+                            </div>
+                          </div>
+
+                          {eventParameter === 'custom' && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">Custom Word Count</Label>
+                              <Input
+                                type="number"
+                                placeholder="Enter word count"
+                                value={customWordCount}
+                                onChange={(e) => setCustomWordCount(e.target.value)}
+                                className="w-full"
+                                min="1"
+                              />
+                            </div>
+                          )}
+
+                          {/* Time Period - only show if word count is selected */}
+                          {shouldShowTimePeriod() && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">Time Period</Label>
+                              <div className="grid grid-cols-3 gap-2">
+                                {['1', '2', '3', '4', '7', '14'].map((days) => (
+                                  <button
+                                    key={days}
+                                    onClick={() => setEventTimePeriod(days)}
+                                    className={cn(
+                                      "p-2 rounded-lg border text-sm transition-all duration-200",
+                                      eventTimePeriod === days 
+                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                        : "border-border hover:border-border/60 hover:bg-muted/30"
+                                    )}
+                                  >
+                                    {days} {parseInt(days) === 1 ? 'day' : 'days'}
+                                  </button>
+                                ))}
+                                <button
+                                  onClick={() => setEventTimePeriod('custom')}
+                                  className={cn(
+                                    "p-2 rounded-lg border text-sm transition-all duration-200",
+                                    eventTimePeriod === 'custom' 
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                      : "border-border hover:border-border/60 hover:bg-muted/30"
+                                  )}
+                                >
+                                  Custom
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {eventTimePeriod === 'custom' && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">Custom Time Period (days)</Label>
+                              <Input
+                                type="number"
+                                placeholder="Enter number of days"
+                                value={customTimePeriod}
+                                onChange={(e) => setCustomTimePeriod(e.target.value)}
+                                className="w-full"
+                                min="1"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Time-based Event Configuration */}
+                      {eventType === 'time' && (
+                        <div className="space-y-3 pl-4 border-l-2 border-orange-200 dark:border-orange-800">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Duration</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {['15', '30', '45', '60'].map((minutes) => (
+                                <button
+                                  key={minutes}
+                                  onClick={() => setEventParameter(minutes)}
+                                  className={cn(
+                                    "p-3 rounded-lg border text-sm transition-all duration-200",
+                                    eventParameter === minutes 
+                                      ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
+                                      : "border-border hover:border-border/60 hover:bg-muted/30"
+                                  )}
+                                >
+                                  {minutes} minutes
+                                </button>
+                              ))}
+                              <button
+                                onClick={() => setEventParameter('custom')}
+                                className={cn(
+                                  "p-3 rounded-lg border text-sm transition-all duration-200",
+                                  eventParameter === 'custom' 
+                                    ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
+                                    : "border-border hover:border-border/60 hover:bg-muted/30"
+                                )}
+                              >
+                                Custom
+                              </button>
+                            </div>
+                          </div>
+
+                          {eventParameter === 'custom' && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-medium">Custom Duration (minutes)</Label>
+                              <Input
+                                type="number"
+                                placeholder="Enter duration in minutes"
+                                value={customDuration}
+                                onChange={(e) => setCustomDuration(e.target.value)}
+                                className="w-full"
+                                min="1"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -317,7 +708,10 @@ const InviteUsers: React.FC = () => {
                 {/* Payment Section */}
                 <div className="space-y-2">
                   <button
-                    onClick={() => setShowPaymentSection(!showPaymentSection)}
+                    onClick={() => {
+                      setShowPaymentSection(!showPaymentSection);
+                      handleOtherSectionInteraction();
+                    }}
                     className="flex items-center justify-between w-full p-3 rounded-lg border border-border hover:bg-muted/30 transition-all duration-200 hover:border-border/60"
                   >
                     <div className="flex items-center gap-3">
@@ -343,22 +737,150 @@ const InviteUsers: React.FC = () => {
 
                   {showPaymentSection && (
                     <div className="pl-6 space-y-4 pt-2">
-                      {/* Payment Amount Input */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Offer Amount</Label>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-muted-foreground text-lg font-medium">$</span>
-                          <Input
-                            type="number"
-                            placeholder="0.00"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            className="flex-1"
-                            min="0"
-                            step="0.01"
-                          />
+                      {/* Payment Method Selection - Show First */}
+                      {!paymentMethod && (
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">Choose Payment Method</Label>
+                            <p className="text-xs text-muted-foreground">Select how you'd like to make your payment</p>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              onClick={() => {
+                                setPaymentMethod('stripe');
+                                setShowStripeForm(true);
+                              }}
+                              className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all duration-200 group"
+                            >
+                              <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded flex items-center justify-center">
+                                <CreditCard className="w-6 h-4 text-white" />
+                              </div>
+                              <div className="text-center">
+                                <span className="text-sm font-medium">Credit Card</span>
+                                <p className="text-xs text-muted-foreground mt-1">Powered by Stripe</p>
+                              </div>
+                            </button>
+                            
+                            <button
+                              onClick={() => {
+                                setPaymentMethod('paypal');
+                                setShowPayPalOption(true);
+                              }}
+                              className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all duration-200 group"
+                            >
+                              <div className="w-12 h-8 bg-blue-500 rounded flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">P</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-sm font-medium">PayPal</span>
+                                <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
+                              </div>
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Stripe Elements Form - Show when Stripe is selected */}
+                      {paymentMethod === 'stripe' && showStripeForm && (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-medium">Card Details</Label>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setPaymentMethod('');
+                                  setShowStripeForm(false);
+                                  setPaymentStatus('pending');
+                                  setPaymentIntentId('');
+                                }}
+                                className="text-xs text-muted-foreground hover:text-foreground"
+                              >
+                                ← Back
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Payment will be authorized now and charged after event completion
+                            </p>
+                          </div>
+                          
+                          <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                            {/* Stripe Card Element will be mounted here */}
+                            <div className="space-y-1">
+                              <Label className="text-xs font-medium text-muted-foreground">Card Information</Label>
+                              <div 
+                                id="card-element"
+                                className="p-3 border border-input rounded-md bg-background min-h-[40px] flex items-center"
+                              >
+                                {!cardElement && (
+                                  <div className="text-sm text-muted-foreground">
+                                    Loading secure payment form...
+                                  </div>
+                                )}
+                              </div>
+                              {cardElement && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Enter your card details securely. Payment will be authorized now and charged after event completion.
+                                </p>
+                              )}
+                            </div>
+                            
+                            {/* Security Badge */}
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Shield className="h-3 w-3" />
+                              <span>Your card information is encrypted and secure</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* PayPal Option - Show when PayPal is selected */}
+                      {paymentMethod === 'paypal' && showPayPalOption && (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium">PayPal Integration</Label>
+                            <p className="text-xs text-muted-foreground">PayPal integration coming soon</p>
+                          </div>
+                          
+                          <div className="p-4 bg-muted/30 rounded-lg border text-center">
+                            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <span className="text-white text-lg font-bold">P</span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">PayPal integration will be available soon</p>
+                            <Button 
+                              variant="outline" 
+                              className="mt-3"
+                              onClick={() => {
+                                setPaymentMethod('');
+                                setShowPayPalOption(false);
+                              }}
+                            >
+                              Choose Different Method
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Offer Amount - Show after payment method is selected */}
+                      {paymentMethod && (
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Offer Amount</Label>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-muted-foreground text-lg font-medium">$</span>
+                            <Input
+                              type="number"
+                              placeholder="0.00"
+                              value={paymentAmount}
+                              onChange={(e) => setPaymentAmount(e.target.value)}
+                              className="flex-1"
+                              min="0"
+                              step="0.01"
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       {/* Service Fee Breakdown */}
                       {paymentAmount && parseFloat(paymentAmount) > 0 && (
@@ -381,47 +903,6 @@ const InviteUsers: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Payment Method Selection */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Payment Method</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => setPaymentMethod('stripe')}
-                            className={cn(
-                              "flex items-center gap-2 p-3 rounded-lg border transition-all duration-200",
-                              paymentMethod === 'stripe' 
-                                ? "border-primary bg-primary/5" 
-                                : "border-border hover:border-border/60 hover:bg-muted/30"
-                            )}
-                          >
-                            <div className="w-8 h-5 bg-blue-600 rounded flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">S</span>
-                            </div>
-                            <span className="text-sm font-medium">Stripe</span>
-                            {paymentMethod === 'stripe' && (
-                              <Check className="h-4 w-4 text-primary ml-auto" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => setPaymentMethod('paypal')}
-                            className={cn(
-                              "flex items-center gap-2 p-3 rounded-lg border transition-all duration-200",
-                              paymentMethod === 'paypal' 
-                                ? "border-primary bg-primary/5" 
-                                : "border-border hover:border-border/60 hover:bg-muted/30"
-                            )}
-                          >
-                            <div className="w-8 h-5 bg-blue-500 rounded flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">P</span>
-                            </div>
-                            <span className="text-sm font-medium">PayPal</span>
-                            {paymentMethod === 'paypal' && (
-                              <Check className="h-4 w-4 text-primary ml-auto" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
                       {/* Security & Trust Indicators */}
                       <div className="space-y-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
                         <h4 className="text-sm font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
@@ -431,64 +912,22 @@ const InviteUsers: React.FC = () => {
                         <div className="space-y-1 text-xs text-green-700 dark:text-green-300">
                           <div className="flex items-center gap-2">
                             <Check className="h-3 w-3" />
-                            <span>Money held securely by Arena until event completion</span>
+                            <span>Payment authorized now, charged after event completion</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Check className="h-3 w-3" />
-                            <span>Full refund if event doesn't start</span>
+                            <span>No charge if event doesn't happen</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Check className="h-3 w-3" />
-                            <span>Payment released only after successful event</span>
+                            <span>Automatic payment processing when event completes</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Check className="h-3 w-3" />
-                            <span>Bank-level security encryption</span>
+                            <span>Bank-level security by Stripe</span>
                           </div>
                         </div>
                       </div>
-
-                      {/* Payment Status (if payment exists) */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && (
-                        <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800/30">
-                          <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
-                            <Clock className="h-4 w-4" />
-                            Payment Status
-                          </h4>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-blue-700 dark:text-blue-300">Status:</span>
-                              <Badge 
-                                variant="outline" 
-                                className={cn(
-                                  "text-xs",
-                                  paymentStatus === 'uploaded' 
-                                    ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-300"
-                                    : "border-blue-300 dark:border-blue-700"
-                                )}
-                              >
-                                {paymentStatus === 'pending' && 'Ready to Upload'}
-                                {paymentStatus === 'uploaded' && 'Uploaded & Held'}
-                                {paymentStatus === 'held' && 'Securely Held'}
-                                {paymentStatus === 'released' && 'Released'}
-                                {paymentStatus === 'refunded' && 'Refunded'}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-blue-700 dark:text-blue-300">Offer Amount:</span>
-                              <span className="font-medium">${paymentAmount}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-blue-700 dark:text-blue-300">Service Fee:</span>
-                              <span className="font-medium">${(parseFloat(paymentAmount) * 0.1).toFixed(2)}</span>
-                            </div>
-                            <div className="flex items-center justify-between text-sm font-medium border-t pt-1">
-                              <span>Total:</span>
-                              <span>${(parseFloat(paymentAmount) * 1.1).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
 
                       {/* Upload Payment Button */}
                       {paymentAmount && parseFloat(paymentAmount) > 0 && paymentMethod && paymentStatus === 'pending' && (
@@ -496,31 +935,51 @@ const InviteUsers: React.FC = () => {
                           className="w-full bg-green-600 hover:bg-green-700 text-white"
                           size="lg"
                           onClick={handlePaymentUpload}
-                          disabled={isPaymentProcessing}
+                          disabled={isPaymentProcessing || isAuthorizing || (paymentMethod === 'stripe' && !cardComplete)}
                         >
-                          {isPaymentProcessing ? (
+                          {isPaymentProcessing || isAuthorizing ? (
                             <>
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Processing Payment...
+                              {isAuthorizing ? 'Authorizing Payment...' : 'Processing Payment...'}
                             </>
                           ) : (
                             <>
-                              <Upload className="h-4 w-4 mr-2" />
-                              Secure ${(parseFloat(paymentAmount) * 1.1).toFixed(2)} Payment
+                              <Shield className="h-4 w-4 mr-2" />
+                              Authorize ${(parseFloat(paymentAmount) * 1.1).toFixed(2)} Payment
                             </>
                           )}
                         </Button>
                       )}
 
+                      {/* Card Error Display */}
+                      {cardError && (
+                        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
+                          <p className="text-xs text-red-600 dark:text-red-400">{cardError}</p>
+                        </div>
+                      )}
+
                       {/* Payment Success Message */}
-                      {paymentStatus === 'uploaded' && (
+                      {paymentStatus === 'authorized' && (
                         <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
                           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                             <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Payment Uploaded Successfully!</span>
+                            <span className="text-sm font-medium">Payment Authorized Successfully!</span>
                           </div>
                           <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            Your payment is now securely held by Arena and will be released after event completion.
+                            Your payment is now held securely by Stripe and will be charged after event completion.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Payment Cancelled Message */}
+                      {paymentStatus === 'cancelled' && (
+                        <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
+                          <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                            <X className="h-4 w-4" />
+                            <span className="text-sm font-medium">Payment Cancelled</span>
+                          </div>
+                          <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                            No charge will be made. You can try again or choose a different payment method.
                           </p>
                         </div>
                       )}
@@ -540,7 +999,10 @@ const InviteUsers: React.FC = () => {
                           return (
                             <button
                               key={platform.id}
-                              onClick={() => togglePlatform(platform.id)}
+                              onClick={() => {
+                                togglePlatform(platform.id);
+                                handleOtherSectionInteraction();
+                              }}
                               title={platform.name}
                               className={cn(
                                 "relative flex items-center justify-center h-10 w-10 rounded-full transition-all duration-200 hover:scale-105",
@@ -634,22 +1096,25 @@ const InviteUsers: React.FC = () => {
                                 variant="outline" 
                                 className={cn(
                                   "text-xs",
-                                  paymentStatus === 'uploaded' 
+                                  paymentStatus === 'authorized' 
                                     ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-300"
+                                    : paymentStatus === 'cancelled'
+                                    ? "border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
                                     : "border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300"
                                 )}
                               >
-                                {paymentStatus === 'pending' && 'Ready to Upload'}
-                                {paymentStatus === 'uploaded' && 'Held by Arena'}
-                                {paymentStatus === 'held' && 'Securely Held'}
-                                {paymentStatus === 'released' && 'Released'}
-                                {paymentStatus === 'refunded' && 'Refunded'}
+                                {paymentStatus === 'pending' && 'Ready to Authorize'}
+                                {paymentStatus === 'authorized' && 'Payment Authorized'}
+                                {paymentStatus === 'cancelled' && 'Payment Cancelled'}
+                                {paymentStatus === 'completed' && 'Payment Completed'}
                               </Badge>
                             </div>
                             <p className="text-sm text-green-600 dark:text-green-400">
-                              {paymentStatus === 'uploaded' 
-                                ? 'Payment securely held and will be released after event completion'
-                                : 'Payment will be uploaded and held securely by Arena'
+                              {paymentStatus === 'authorized' 
+                                ? 'Payment authorized and held securely until event completion'
+                                : paymentStatus === 'cancelled'
+                                ? 'Payment was cancelled - no charge will be made'
+                                : 'Payment will be authorized and held securely by Stripe'
                               }
                             </p>
                           </div>
@@ -695,7 +1160,7 @@ const InviteUsers: React.FC = () => {
                   )}
 
                   {/* Event Type Section */}
-                  {eventParameter && (
+                  {eventParameter && eventType && (
                     <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800/30">
                       <h3 className="font-medium text-sm text-blue-800 dark:text-blue-200 uppercase tracking-wide">Event Details</h3>
                       <div className="flex items-center gap-3">
@@ -708,7 +1173,7 @@ const InviteUsers: React.FC = () => {
                         </div>
                         <div>
                           <span className="font-medium text-blue-700 dark:text-blue-300">
-                            {eventType === 'length' ? `${eventParameter} words` : `${eventParameter} minutes`}
+                            {getEventDisplayText()}
                           </span>
                           <p className="text-sm text-blue-600 dark:text-blue-400">
                             {eventType === 'length' ? 'Length-based discussion' : 'Time-based discussion'}

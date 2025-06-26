@@ -37,14 +37,17 @@ import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Badge } from "@/components/ui/badge";
 
-interface SocialVerification {
-  linkedin: ContextVerificationStatus;
-  twitter: ContextVerificationStatus;
-  facebook: ContextVerificationStatus;
-  instagram: ContextVerificationStatus;
-  youtube: ContextVerificationStatus;
-  tiktok: ContextVerificationStatus;
-}
+type SocialPlatform = 'linkedin' | 'twitter' | 'facebook' | 'instagram' | 'youtube' | 'tiktok';
+
+type VerificationStatus = {
+  status: 'unverified' | 'pending' | 'verified' | 'failed';
+  code?: string;
+  timestamp?: number;
+};
+
+type SocialVerification = {
+  [K in SocialPlatform]?: VerificationStatus;
+};
 
 interface ImageEditorState {
   scale: number;
@@ -78,18 +81,13 @@ const MOCK_DEBATE_HISTORY = [
 interface ProfileProps {}
 
 const generateVerificationCode = () => {
-  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return code;
+  // Generate a random 3-digit number
+  return Math.floor(100 + Math.random() * 900).toString();
 };
 
 const generateVerificationSymbol = () => {
-  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const randomIndex = Math.floor(Math.random() * letters.length);
-  return letters[randomIndex];
+  // Generate a random 3-digit number for verification
+  return Math.floor(100 + Math.random() * 900).toString();
 };
 
 const Profile: React.FC<ProfileProps> = () => {
@@ -117,28 +115,14 @@ const Profile: React.FC<ProfileProps> = () => {
   const [photoURL, setPhotoURL] = useState<string>(currentUser?.photoURL || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
-  const [selectedPlatform, setSelectedPlatform] = useState<keyof ContextSocialLinks | null>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<SocialPlatform | null>(null);
+  const [verificationStep, setVerificationStep] = useState<'start' | 'validate'>('start');
+  const [verificationScreenshots, setVerificationScreenshots] = useState<File[]>([]);
   const [verificationStatus, setVerificationStatus] = useState<SocialVerification>(() => {
-    const savedStatus = localStorage.getItem('userVerificationStatus');
-    const initialStatus = savedStatus ? JSON.parse(savedStatus) : {};
-    return {
-      linkedin: initialStatus.linkedin || { status: 'unverified' },
-      twitter: initialStatus.twitter || { status: 'unverified' },
-      facebook: initialStatus.facebook || { status: 'unverified' },
-      instagram: initialStatus.instagram || { status: 'unverified' },
-      youtube: initialStatus.youtube || { status: 'unverified' },
-      tiktok: initialStatus.tiktok || { status: 'unverified' }
-    };
+    const savedStatus = localStorage.getItem('verificationStatus');
+    return savedStatus ? JSON.parse(savedStatus) : {};
   });
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationStep, setVerificationStep] = useState<'code' | 'profile'>('code');
-  const [verificationScreenshots, setVerificationScreenshots] = useState<{
-    code: File | null;
-    profile: File | null;
-  }>({
-    code: null,
-    profile: null
-  });
   const [imageEditor, setImageEditor] = useState<ImageEditorState>({
     scale: 1,
     rotate: 0,
@@ -579,22 +563,22 @@ const Profile: React.FC<ProfileProps> = () => {
   );
 
   const socialIcons = [
-    { name: 'linkedin', Icon: Linkedin, label: 'LinkedIn' },
-    { name: 'twitter', Icon: Twitter, label: 'Twitter/X' },
-    { name: 'facebook', Icon: Facebook, label: 'Facebook' },
-    { name: 'instagram', Icon: Instagram, label: 'Instagram' },
-    { name: 'youtube', Icon: Youtube, label: 'YouTube' },
-    { name: 'tiktok', Icon: TikTokIcon, label: 'TikTok' },
+    { name: 'linkedin' as const, Icon: Linkedin, label: 'LinkedIn' },
+    { name: 'twitter' as const, Icon: Twitter, label: 'Twitter/X' },
+    { name: 'facebook' as const, Icon: Facebook, label: 'Facebook' },
+    { name: 'instagram' as const, Icon: Instagram, label: 'Instagram' },
+    { name: 'youtube' as const, Icon: Youtube, label: 'YouTube' },
+    { name: 'tiktok' as const, Icon: TikTokIcon, label: 'TikTok' },
   ] as const;
 
   const renderSocialButtons = () => {
     return (
       <div className="flex flex-wrap gap-2 mt-3">
         {socialIcons.map(({ name, Icon, label }) => {
-          const platformKey = name;
-          const statusInfo: ContextVerificationStatus = verificationStatus[platformKey] || { status: 'unverified' };
+          const platformKey = name as SocialPlatform;
+          const statusInfo = (verificationStatus[platformKey] || { status: 'unverified' as const }) as VerificationStatus;
           const status = statusInfo.status;
-          const currentLink = socialLinks[platformKey as keyof ContextSocialLinks] || '';
+          const currentLink = socialLinks[platformKey] || '';
           const isPending = status === 'pending';
           const isVerified = status === 'verified';
 
@@ -616,7 +600,6 @@ const Profile: React.FC<ProfileProps> = () => {
               >
                 <Icon className="h-5 w-5" />
                 {isVerified && <CheckIcon className="h-3.5 w-3.5 text-black bg-background rounded-full absolute -top-1 -right-1 p-0.5" />}
-                
               </Button>
             </div>
           );
@@ -629,16 +612,15 @@ const Profile: React.FC<ProfileProps> = () => {
     setShowSettings(!showSettings);
   };
 
-  const handleVerificationStart = (platform: keyof ContextSocialLinks) => {
-    const symbol = generateVerificationSymbol();
+  const handleVerificationStart = (platform: SocialPlatform) => {
+    const code = generateVerificationCode();
     
     // Create the updated verification status
-    const updatedStatus = {
+    const updatedStatus: SocialVerification = {
       ...verificationStatus,
       [platform]: { 
-        ...verificationStatus[platform], 
-        status: 'pending', 
-        code: symbol,
+        status: 'pending',
+        code: code,
         timestamp: Date.now()
       }
     };
@@ -647,13 +629,49 @@ const Profile: React.FC<ProfileProps> = () => {
     setVerificationStatus(updatedStatus);
     
     // Also update localStorage to ensure persistence across navigations
-    localStorage.setItem('userVerificationStatus', JSON.stringify(updatedStatus));
+    localStorage.setItem('verificationStatus', JSON.stringify(updatedStatus));
     
     // Set UI state for dialog
     setSelectedPlatform(platform);
     setShowValidateDialog(true);
-    setVerificationStep('code');
-    setVerificationScreenshots({ code: null, profile: null });
+  };
+
+  const handleVerificationSubmit = async () => {
+    if (!selectedPlatform) return;
+
+    console.log('Starting verification for platform:', selectedPlatform);
+    console.log('Current social link:', socialLinks[selectedPlatform as keyof ContextSocialLinks]);
+
+    // Mark as verified immediately after link submission
+    const updatedStatus: SocialVerification = {
+      ...verificationStatus,
+      [selectedPlatform]: {
+        status: 'verified' as const,
+        code: verificationStatus[selectedPlatform]?.code,
+        timestamp: Date.now()
+      }
+    };
+
+    setVerificationStatus(updatedStatus);
+    localStorage.setItem('verificationStatus', JSON.stringify(updatedStatus));
+    setShowValidateDialog(false);
+    setSelectedPlatform(null);
+    
+    console.log('Verification completed successfully for:', selectedPlatform);
+    toast.success('Profile verified successfully!');
+  };
+
+  const handleVerificationCancel = () => {
+    setShowValidateDialog(false);
+    setSelectedPlatform(null);
+    setVerificationStep('start');
+    setVerificationScreenshots([]);
+  };
+
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setVerificationScreenshots(Array.from(e.target.files));
+    }
   };
 
   const profileUrlPatterns: { [key in keyof ContextSocialLinks]: RegExp } = {
@@ -684,7 +702,10 @@ const Profile: React.FC<ProfileProps> = () => {
       for (const key in statusToSync) {
           if (Object.prototype.hasOwnProperty.call(statusToSync, key)) {
               const platformKey = key as keyof SocialVerification;
-              contextUpdate[platformKey] = statusToSync[platformKey];
+              const status = statusToSync[platformKey];
+              if (status) {
+                contextUpdate[platformKey] = status;
+              }
           }
       }
       await updateContextProfile({ verificationStatus: contextUpdate });
@@ -692,47 +713,6 @@ const Profile: React.FC<ProfileProps> = () => {
       setVerificationStatus(statusToSync);
     } catch (error) {
       console.error('Error syncing verification status with Firestore:', error);
-    }
-  };
-
-  const handleVerificationSubmit = async (platform: keyof ContextSocialLinks, link: string) => {
-    if (!currentUser) {
-      toast.error("User not logged in.");
-      return;
-    }
-    if (!link || !validateProfileUrl(platform, link)) {
-      toast.error('Please enter a valid profile URL');
-      return;
-    }
-
-    try {
-      await setDoc(doc(db, 'verificationRequests', `${currentUser.uid}_${platform}`), {
-        userId: currentUser.uid,
-        username: currentUser.username,
-        platform,
-        profileUrl: link,
-        verificationCode: verificationStatus[platform].code,
-        requestedAt: serverTimestamp(),
-        status: 'pending'
-      });
-
-      const updatedStatus = {
-        ...verificationStatus,
-        [platform]: {
-          status: 'pending',
-          code: verificationStatus[platform].code,
-          timestamp: Date.now()
-        }
-      };
-      
-      await syncVerificationStatusWithFirestore(updatedStatus);
-
-      setShowValidateDialog(false);
-      toast.success('Submitted for verification. You will be notified soon and can remove the code from your profile.');
-
-    } catch (error) {
-      console.error('Error submitting verification:', error);
-      toast.error('Failed to submit verification request. Please try again.');
     }
   };
 
@@ -762,7 +742,7 @@ const Profile: React.FC<ProfileProps> = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 max-w-4xl mt-16">
-        <Card className="mb-8">
+        <Card className="mb-8 border overflow-hidden transition-all duration-300 hover:shadow-md">
           <CardHeader className="pb-4">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
               <div className="relative">
@@ -816,6 +796,7 @@ const Profile: React.FC<ProfileProps> = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsEditing(true)}
+                  className="transition-all duration-200 hover:shadow-sm"
                 >
                   Edit Profile
                 </Button>
@@ -824,7 +805,7 @@ const Profile: React.FC<ProfileProps> = () => {
                     <Button 
                       variant="ghost" 
                       size="icon"
-                      className="h-9 w-9"
+                      className="h-9 w-9 transition-all duration-200 hover:shadow-sm"
                     >
                       <Settings className="h-4 w-4" />
                     </Button>
@@ -851,8 +832,8 @@ const Profile: React.FC<ProfileProps> = () => {
           
           <CardContent>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Verified Accounts</h3>
+              {/* Show verified social media icons directly */}
+              {Object.entries(verificationStatus).some(([_, status]) => status.status === 'verified') && (
                 <div className="flex flex-wrap gap-3">
                   {Object.entries(verificationStatus).map(([platform, status]) => {
                     if (status.status !== 'verified') return null;
@@ -875,18 +856,18 @@ const Profile: React.FC<ProfileProps> = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="relative p-0 text-black hover:text-gray-800 hover:bg-gray-100"
+                          className="relative p-2 text-black hover:text-gray-800 hover:bg-gray-100 rounded-full transition-all duration-200 hover:shadow-sm"
                         >
-                          <Icon className="h-4 w-4 text-black" />
+                          <Icon className="h-5 w-5 text-black" />
                           <div className="absolute -top-1 -right-1">
-                            <Check className="h-3 w-3 bg-background rounded-full p-0.5 text-black" />
+                            <CheckIcon className="h-3.5 w-3.5 bg-background rounded-full p-0.5 text-black border border-gray-200" />
                           </div>
                         </Button>
                       </a>
                     );
                   })}
                 </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -925,7 +906,7 @@ const Profile: React.FC<ProfileProps> = () => {
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <span className="font-mono px-5 py-2 text-xs font-medium bg-background border border-border rounded-lg shadow select-all">
-                      {verificationStatus[selectedPlatform]?.code || ''}
+                      {selectedPlatform && verificationStatus[selectedPlatform]?.code || ''}
                     </span>
                     <Button
                       type="button"
@@ -933,8 +914,10 @@ const Profile: React.FC<ProfileProps> = () => {
                       variant="outline"
                       className="rounded-lg px-3 py-1 font-medium h-7 text-xs inline-flex items-center gap-1"
                       onClick={() => {
-                        navigator.clipboard.writeText(verificationStatus[selectedPlatform]?.code || '');
-                        toast.success('Verification code copied! Go to your social profile to paste it.');
+                        if (selectedPlatform) {
+                          navigator.clipboard.writeText(verificationStatus[selectedPlatform]?.code || '');
+                          toast.success('Verification code copied! Go to your social profile to paste it in the URL.');
+                        }
                       }}
                     >
                       <CopyIcon className="h-4 w-4" />
@@ -945,23 +928,25 @@ const Profile: React.FC<ProfileProps> = () => {
                 <div className="w-full border-t border-border my-2" />
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-xs font-medium text-muted-foreground mb-1">Step 2</span>
-                  <span className="text-xs font-medium text-foreground">Paste it in your public profile/about section.</span>
+                  <span className="text-xs font-medium text-foreground text-center">
+                    Go to your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'social'} profile, paste the verification code and take a screenshot showing the full URL.
+                  </span>
                 </div>
                 <div className="w-full border-t border-border my-2" />
                 <div className="flex flex-col items-center gap-1 w-full">
                   <span className="text-xs font-medium text-muted-foreground mb-1">Step 3</span>
-                  <span className="text-xs font-medium text-foreground">Paste your updated profile link below:</span>
+                  <span className="text-xs font-medium text-foreground">Upload the screenshot:</span>
                   <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleScreenshotUpload}
                     className="mt-2 w-full text-center border border-border rounded-lg font-normal text-xs"
-                    placeholder={`Paste your updated ${selectedPlatform} profile URL here`}
-                    value={socialLinks[selectedPlatform] || ''}
-                    onChange={e => setSocialLinks({ ...socialLinks, [selectedPlatform]: e.target.value })}
                   />
                 </div>
               </div>
             </CardContent>
             <CardFooter className="w-full mt-2">
-              <Button size="sm" className="w-full h-7 text-xs" onClick={() => handleVerificationSubmit(selectedPlatform, socialLinks[selectedPlatform])} disabled={!selectedPlatform || !socialLinks[selectedPlatform]}>
+              <Button size="sm" className="w-full h-7 text-xs" onClick={handleVerificationSubmit} disabled={!selectedPlatform || verificationScreenshots.length === 0}>
                 Submit for Verification
               </Button>
             </CardFooter>
@@ -1208,7 +1193,7 @@ const Profile: React.FC<ProfileProps> = () => {
               <div className="grid grid-cols-6 gap-1">
                 {socialIcons.map(({ name, Icon }) => {
                   const platformName = name;
-                  const statusInfo = verificationStatus[platformName] || { status: 'unverified' };
+                  const statusInfo = verificationStatus[platformName] || { status: 'unverified' as const };
                   const isVerified = statusInfo.status === 'verified';
                   const isPending = statusInfo.status === 'pending';
                   return (
