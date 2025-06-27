@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import ProfileCard from '@/components/ProfileCard';
-import { loadStripe } from '@stripe/stripe-js';
 
 const TikTokIcon = ({ className = "h-4 w-4" }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -51,19 +50,15 @@ const InviteUsers: React.FC = () => {
   const [customTimePeriod, setCustomTimePeriod] = useState('');
   const [customDuration, setCustomDuration] = useState('');
   
+  // Custom input active states
+  const [showCustomAmountInput, setShowCustomAmountInput] = useState(false);
+  const [showCustomWordCountInput, setShowCustomWordCountInput] = useState(false);
+  const [showCustomTimePeriodInput, setShowCustomTimePeriodInput] = useState(false);
+  
   // Payment status states
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'authorized' | 'cancelled' | 'completed'>('pending');
   const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
-  
-  // Stripe Elements states
-  const [stripe, setStripe] = useState<any>(null);
-  const [elements, setElements] = useState<any>(null);
-  const [cardElement, setCardElement] = useState<any>(null);
-  const [showStripeForm, setShowStripeForm] = useState(false);
-  const [paymentIntentId, setPaymentIntentId] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
-  const [cardComplete, setCardComplete] = useState(false);
-  const [cardError, setCardError] = useState<string>('');
   
   // Stripe-like payment states
   const [showPaymentMethodSelection, setShowPaymentMethodSelection] = useState(false);
@@ -79,6 +74,22 @@ const InviteUsers: React.FC = () => {
   const [cardExpiryValid, setCardExpiryValid] = useState(false);
   const [cardCVCValid, setCardCVCValid] = useState(false);
   const [cardholderNameValid, setCardholderNameValid] = useState(false);
+
+  // Function to reset payment details
+  const resetPaymentDetails = () => {
+    setPaymentMethod('');
+    setShowCardForm(false);
+    setShowPayPalOption(false);
+    setPaymentStatus('pending');
+    setCardNumber('');
+    setCardExpiry('');
+    setCardCVC('');
+    setCardholderName('');
+    setCardNumberValid(false);
+    setCardExpiryValid(false);
+    setCardCVCValid(false);
+    setCardholderNameValid(false);
+  };
 
   // Card formatting helpers
   const formatCardNumber = (value: string) => {
@@ -143,19 +154,11 @@ const InviteUsers: React.FC = () => {
 
   // Tiered pricing helper functions
   const calculateServiceFee = (amount: number) => {
-    if (amount <= 50) {
-      return amount * 0.05; // 5% for $0-50
-    } else if (amount <= 200) {
-      return amount * 0.04; // 4% for $51-200
-    } else {
-      return amount * 0.03; // 3% for $201+
-    }
+    return amount * 0.07; // Flat 7% fee
   };
 
   const getServiceFeePercentage = (amount: number) => {
-    if (amount <= 50) return 5;
-    if (amount <= 200) return 4;
-    return 3;
+    return 7; // Always 7%
   };
 
   const getTotalAmount = (amount: number) => {
@@ -282,48 +285,27 @@ const InviteUsers: React.FC = () => {
     }
 
     if (paymentMethod === 'stripe') {
-      if (!stripe || !cardElement) {
-        toast.error('Payment system not ready. Please try again.');
+      // Validate mock form fields
+      if (!cardNumberValid || !cardExpiryValid || !cardCVCValid || !cardholderNameValid) {
+        toast.error('Please fill in all card details correctly');
         return;
       }
 
-      setIsAuthorizing(true);
+      setIsPaymentProcessing(true);
       
       try {
-        // Simulate creating a payment intent (in real implementation, this would be done on your backend)
-        const paymentIntent = {
-          client_secret: 'pi_test_secret_' + Math.random().toString(36).substr(2, 9)
-        };
+        // Simulate payment authorization delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Confirm the card payment
-        const { error, paymentIntent: confirmedIntent } = await stripe.confirmCardPayment(
-          paymentIntent.client_secret,
-          {
-            payment_method: {
-              card: cardElement,
-              billing_details: {
-                name: 'Test User', // In real app, get from form
-              },
-            },
-          }
-        );
-
-        if (error) {
-          setPaymentStatus('cancelled');
-          setCardError(error.message || 'Payment failed');
-          toast.error('Payment authorization failed: ' + error.message);
-        } else {
-          setPaymentStatus('authorized');
-          setPaymentIntentId(confirmedIntent?.id || '');
-          setCardError('');
-          toast.success('Payment authorized! Amount will be charged after event completion.');
-        }
+        setPaymentStatus('authorized');
+        setShowPaymentSection(false); // Collapse payment section after successful authorization
+        setIsPaymentProcessing(false);
+        toast.success('Payment authorized! Amount will be charged after event completion.');
       } catch (err) {
         setPaymentStatus('cancelled');
-        setCardError('Payment authorization failed');
         toast.error('Payment authorization failed. Please try again.');
       } finally {
-        setIsAuthorizing(false);
+        setIsPaymentProcessing(false);
       }
     } else {
       setIsPaymentProcessing(true);
@@ -331,6 +313,7 @@ const InviteUsers: React.FC = () => {
       // Simulate other payment processing
       setTimeout(() => {
         setPaymentStatus('authorized');
+        setShowPaymentSection(false); // Collapse payment section after successful authorization
         setIsPaymentProcessing(false);
         toast.success('Payment uploaded successfully! Money is now held securely by Arena.');
       }, 2000);
@@ -349,74 +332,8 @@ const InviteUsers: React.FC = () => {
 
   // Auto-collapse event section when user interacts with other sections
   const handleOtherSectionInteraction = () => {
-    if (showEventSection && isEventSectionComplete) {
-      setShowEventSection(false);
-    }
+    // Removed auto-collapse - users now have manual control with Done button
   };
-
-  // Auto-collapse event section when complete
-  useEffect(() => {
-    if (isEventSectionComplete && showEventSection) {
-      // Add a small delay to allow the user to see the completion
-      const timer = setTimeout(() => {
-        setShowEventSection(false);
-      }, 1000); // 1 second delay
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isEventSectionComplete]); // Only trigger when completion status changes
-
-  // Initialize Stripe
-  useEffect(() => {
-    const initializeStripe = async () => {
-      // For now, using a placeholder key - replace with your actual publishable key
-      const stripeInstance = await loadStripe('pk_test_placeholder_key');
-      setStripe(stripeInstance);
-    };
-    
-    initializeStripe();
-  }, []);
-
-  // Mount Stripe Elements when form is shown
-  useEffect(() => {
-    if (stripe && showStripeForm && !elements) {
-      const elementsInstance = stripe.elements();
-      setElements(elementsInstance);
-      
-      const cardElementInstance = elementsInstance.create('card', {
-        style: {
-          base: {
-            fontSize: '14px',
-            color: 'var(--foreground)',
-            '::placeholder': {
-              color: 'var(--muted-foreground)',
-            },
-            backgroundColor: 'transparent',
-          },
-        },
-      });
-      
-      setCardElement(cardElementInstance);
-      cardElementInstance.mount('#card-element');
-      
-      // Add validation listeners
-      cardElementInstance.on('change', (event: any) => {
-        setCardComplete(event.complete);
-        setCardError(event.error ? event.error.message : '');
-      });
-    }
-
-    // Cleanup when form is closed
-    return () => {
-      if (cardElement && !showStripeForm) {
-        cardElement.destroy();
-        setCardElement(null);
-        setElements(null);
-        setCardComplete(false);
-        setCardError('');
-      }
-    };
-  }, [stripe, showStripeForm, elements, cardElement]);
 
   return (
     <>
@@ -510,13 +427,16 @@ const InviteUsers: React.FC = () => {
                       </div>
                       <div className="text-left">
                         <span className="text-sm font-medium">Event Type</span>
-                        <p className="text-xs text-muted-foreground">Choose length or time-based</p>
+                        {isEventSectionComplete ? (
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded-md">
+                              {getEventDisplayText()}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Choose length or time-based</p>
+                        )}
                       </div>
-                      {eventParameter && eventType && (
-                        <Badge variant="secondary" className="text-xs">
-                          {getEventDisplayText()}
-                        </Badge>
-                      )}
                     </div>
                     {showEventSection ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -528,27 +448,26 @@ const InviteUsers: React.FC = () => {
                   {showEventSection && (
                     <div className="pl-6 space-y-3 pt-1">
                       {/* Event Type Selection - Radio buttons instead of dropdown */}
-                      <div className="space-y-3">
-                        <Label className="text-sm font-medium">Event Type</Label>
-                        <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => {
                               setEventType('length');
                               resetEventValues();
                             }}
                             className={cn(
-                              "flex flex-col items-center gap-3 p-4 rounded-lg border transition-all duration-200",
+                              "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all duration-200",
                               eventType === 'length' 
                                 ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
                                 : "border-border hover:border-border/60 hover:bg-muted/30"
                             )}
                           >
-                            <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                              <FileText className="h-5 w-5 text-blue-600" />
+                            <div className="p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                              <FileText className="h-4 w-4 text-blue-600" />
                             </div>
                             <div className="text-center">
                               <span className="text-sm font-medium">Length-based</span>
-                              <p className="text-xs text-muted-foreground mt-1">Word count target</p>
+                              <p className="text-xs text-muted-foreground">Word count target</p>
                             </div>
                           </button>
                           
@@ -558,18 +477,19 @@ const InviteUsers: React.FC = () => {
                               resetEventValues();
                             }}
                             className={cn(
-                              "flex flex-col items-center gap-3 p-4 rounded-lg border transition-all duration-200",
+                              "flex flex-col items-center gap-2 p-3 rounded-lg border transition-all duration-200",
                               eventType === 'time' 
                                 ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
                                 : "border-border hover:border-border/60 hover:bg-muted/30"
                             )}
+                            disabled
                           >
-                            <div className="p-2 rounded-full bg-orange-100 dark:bg-orange-900/30">
-                              <Clock className="h-5 w-5 text-orange-600" />
+                            <div className="p-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30">
+                              <Clock className="h-4 w-4 text-orange-600" />
                             </div>
                             <div className="text-center">
                               <span className="text-sm font-medium">Time-based</span>
-                              <p className="text-xs text-muted-foreground mt-1">Live discussion</p>
+                              <p className="text-xs text-muted-foreground">Coming soon (Live)</p>
                             </div>
                           </button>
                         </div>
@@ -584,9 +504,13 @@ const InviteUsers: React.FC = () => {
                               {['300', '500', '1000'].map((count) => (
                                 <button
                                   key={count}
-                                  onClick={() => setEventParameter(count)}
+                                  onClick={() => {
+                                    setEventParameter(count);
+                                    setShowCustomWordCountInput(false);
+                                    setCustomWordCount('');
+                                  }}
                                   className={cn(
-                                    "p-3 rounded-lg border text-sm transition-all duration-200",
+                                    "p-2 rounded-lg border text-sm transition-all duration-200",
                                     eventParameter === count 
                                       ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
                                       : "border-border hover:border-border/60 hover:bg-muted/30"
@@ -595,21 +519,52 @@ const InviteUsers: React.FC = () => {
                                   {count} words
                                 </button>
                               ))}
-                              <button
-                                onClick={() => setEventParameter('custom')}
-                                className={cn(
-                                  "p-3 rounded-lg border text-sm transition-all duration-200",
-                                  eventParameter === 'custom' 
-                                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
-                                    : "border-border hover:border-border/60 hover:bg-muted/30"
-                                )}
-                              >
-                                Custom
-                              </button>
+                              {showCustomWordCountInput ? (
+                                <div className="flex items-center space-x-1 p-2 rounded-lg border border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+                                  <input
+                                    type="number"
+                                    placeholder="Enter word count"
+                                    value={customWordCount}
+                                    onChange={(e) => {
+                                      setCustomWordCount(e.target.value);
+                                      setEventParameter('custom');
+                                    }}
+                                    className="flex-1 bg-transparent text-sm outline-none"
+                                    min="1"
+                                    max="10000"
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      setShowCustomWordCountInput(false);
+                                      setCustomWordCount('');
+                                      setEventParameter('');
+                                    }}
+                                    className="text-muted-foreground hover:text-foreground"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setShowCustomWordCountInput(true);
+                                    setEventParameter('custom');
+                                  }}
+                                  className={cn(
+                                    "p-2 rounded-lg border text-sm transition-all duration-200",
+                                    eventParameter === 'custom' 
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                      : "border-border hover:border-border/60 hover:bg-muted/30"
+                                  )}
+                                >
+                                  Custom
+                                </button>
+                              )}
                             </div>
                           </div>
 
-                          {eventParameter === 'custom' && (
+                          {eventParameter === 'custom' && !showCustomWordCountInput && (
                             <div className="space-y-2">
                               <Label className="text-sm font-medium">Custom Word Count</Label>
                               <Input
@@ -619,6 +574,7 @@ const InviteUsers: React.FC = () => {
                                 onChange={(e) => setCustomWordCount(e.target.value)}
                                 className="w-full"
                                 min="1"
+                                max="10000"
                               />
                             </div>
                           )}
@@ -628,36 +584,70 @@ const InviteUsers: React.FC = () => {
                             <div className="space-y-2">
                               <Label className="text-sm font-medium">Time Period</Label>
                               <div className="grid grid-cols-3 gap-2">
-                                {['1', '2', '3', '4', '7', '14'].map((days) => (
+                                {['1', '2', '3', '4', '7'].map((days) => (
                                   <button
                                     key={days}
-                                    onClick={() => setEventTimePeriod(days)}
+                                    onClick={() => {
+                                      setEventTimePeriod(days);
+                                      setShowCustomTimePeriodInput(false);
+                                      setCustomTimePeriod('');
+                                    }}
                                     className={cn(
-                                      "p-2 rounded-lg border text-sm transition-all duration-200",
+                                      "p-1.5 rounded-lg border text-sm transition-all duration-200",
                                       eventTimePeriod === days 
                                         ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
                                         : "border-border hover:border-border/60 hover:bg-muted/30"
                                     )}
                                   >
-                                    {days} {parseInt(days) === 1 ? 'day' : 'days'}
+                                    {days === '1' ? '24 hrs' : `over ${days} days`}
                                   </button>
                                 ))}
-                                <button
-                                  onClick={() => setEventTimePeriod('custom')}
-                                  className={cn(
-                                    "p-2 rounded-lg border text-sm transition-all duration-200",
-                                    eventTimePeriod === 'custom' 
-                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
-                                      : "border-border hover:border-border/60 hover:bg-muted/30"
-                                  )}
-                                >
-                                  Custom
-                                </button>
+                                {showCustomTimePeriodInput ? (
+                                  <div className="flex items-center space-x-1 p-1.5 rounded-lg border border-blue-500 bg-blue-50 dark:bg-blue-950/20">
+                                    <input
+                                      type="number"
+                                      placeholder="Enter number of days"
+                                      value={customTimePeriod}
+                                      onChange={(e) => {
+                                        setCustomTimePeriod(e.target.value);
+                                        setEventTimePeriod('custom');
+                                      }}
+                                      className="flex-1 bg-transparent text-sm outline-none"
+                                      min="1"
+                                      max="30"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        setShowCustomTimePeriodInput(false);
+                                        setCustomTimePeriod('');
+                                        setEventTimePeriod('');
+                                      }}
+                                      className="text-muted-foreground hover:text-foreground"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setShowCustomTimePeriodInput(true);
+                                      setEventTimePeriod('custom');
+                                    }}
+                                    className={cn(
+                                      "p-1.5 rounded-lg border text-sm transition-all duration-200",
+                                      eventTimePeriod === 'custom' 
+                                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20" 
+                                        : "border-border hover:border-border/60 hover:bg-muted/30"
+                                    )}
+                                  >
+                                    Custom
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
 
-                          {eventTimePeriod === 'custom' && (
+                          {eventTimePeriod === 'custom' && !showCustomTimePeriodInput && (
                             <div className="space-y-2">
                               <Label className="text-sm font-medium">Custom Time Period (days)</Label>
                               <Input
@@ -667,6 +657,7 @@ const InviteUsers: React.FC = () => {
                                 onChange={(e) => setCustomTimePeriod(e.target.value)}
                                 className="w-full"
                                 min="1"
+                                max="30"
                               />
                             </div>
                           )}
@@ -676,50 +667,41 @@ const InviteUsers: React.FC = () => {
                       {/* Time-based Event Configuration */}
                       {eventType === 'time' && (
                         <div className="space-y-3 pl-4 border-l-2 border-orange-200 dark:border-orange-800">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-medium">Duration</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                              {['15', '30', '45', '60'].map((minutes) => (
-                                <button
-                                  key={minutes}
-                                  onClick={() => setEventParameter(minutes)}
-                                  className={cn(
-                                    "p-3 rounded-lg border text-sm transition-all duration-200",
-                                    eventParameter === minutes 
-                                      ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
-                                      : "border-border hover:border-border/60 hover:bg-muted/30"
-                                  )}
-                                >
-                                  {minutes} minutes
-                                </button>
-                              ))}
-                              <button
-                                onClick={() => setEventParameter('custom')}
-                                className={cn(
-                                  "p-3 rounded-lg border text-sm transition-all duration-200",
-                                  eventParameter === 'custom' 
-                                    ? "border-orange-500 bg-orange-50 dark:bg-orange-950/20" 
-                                    : "border-border hover:border-border/60 hover:bg-muted/30"
-                                )}
-                              >
-                                Custom
-                              </button>
+                          <div className="p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800 text-center">
+                            <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <Clock className="h-6 w-6 text-orange-600" />
                             </div>
+                            <h3 className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-1">
+                              Live Discussion Coming Soon
+                            </h3>
+                            <p className="text-xs text-orange-600 dark:text-orange-400">
+                              Real-time video discussions will be available soon. For now, please use length-based events.
+                            </p>
+                            <Button
+                              onClick={() => {
+                                setEventType('length');
+                                resetEventValues();
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="mt-3 border-orange-300 text-orange-700 hover:bg-orange-100"
+                            >
+                              Switch to Length-based
+                            </Button>
                           </div>
+                        </div>
+                      )}
 
-                          {eventParameter === 'custom' && (
-                            <div className="space-y-2">
-                              <Label className="text-sm font-medium">Custom Duration (minutes)</Label>
-                              <Input
-                                type="number"
-                                placeholder="Enter duration in minutes"
-                                value={customDuration}
-                                onChange={(e) => setCustomDuration(e.target.value)}
-                                className="w-full"
-                                min="1"
-                              />
-                            </div>
-                          )}
+                      {/* Done Button */}
+                      {isEventSectionComplete && (
+                        <div className="pt-2">
+                          <Button
+                            onClick={() => setShowEventSection(false)}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                            size="sm"
+                          >
+                            Done
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -741,13 +723,16 @@ const InviteUsers: React.FC = () => {
                       </div>
                       <div className="text-left">
                         <span className="text-sm font-medium">Incentivize Recipient</span>
-                        <p className="text-xs text-muted-foreground">Show appreciation for their time with a secure payment</p>
+                        {paymentAmount ? (
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/30 px-2 py-1 rounded-md">
+                              ${paymentAmount} offered
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Show appreciation for their time with a secure payment</p>
+                        )}
                       </div>
-                      {paymentAmount && (
-                        <Badge variant="secondary" className="text-xs">
-                          ${paymentAmount} held
-                        </Badge>
-                      )}
                     </div>
                     {showPaymentSection ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -759,56 +744,86 @@ const InviteUsers: React.FC = () => {
                   {showPaymentSection && (
                     <div className="pl-6 space-y-4 pt-2">
                       {/* Offer Amount - Show First */}
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         <Label className="text-sm font-medium">Offer Amount</Label>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-muted-foreground text-lg font-medium">$</span>
-                          <Input
-                            type="number"
-                            placeholder="0.00"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            className="flex-1"
-                            min="0"
-                            step="0.01"
-                          />
+                        <div className="grid grid-cols-3 gap-2">
+                          {['20', '50', '100', '1000', '2000'].map((amount) => (
+                            <button
+                              key={amount}
+                              onClick={() => {
+                                setPaymentAmount(amount);
+                                setShowCustomAmountInput(false);
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg border text-sm transition-all duration-200",
+                                paymentAmount === amount 
+                                  ? "border-green-500 bg-green-50 dark:bg-green-950/20" 
+                                  : "border-border hover:border-border/60 hover:bg-muted/30"
+                              )}
+                            >
+                              ${amount}
+                            </button>
+                          ))}
+                          {showCustomAmountInput ? (
+                            <div className="flex items-center space-x-1 p-2 rounded-lg border border-green-500 bg-green-50 dark:bg-green-950/20">
+                              <span className="text-muted-foreground text-sm font-medium">$</span>
+                              <input
+                                type="number"
+                                placeholder="0.00"
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                className="flex-1 bg-transparent text-sm outline-none"
+                                min="0"
+                                step="0.01"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => {
+                                  setShowCustomAmountInput(false);
+                                  setPaymentAmount('');
+                                }}
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setShowCustomAmountInput(true);
+                                setPaymentAmount('');
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg border text-sm transition-all duration-200",
+                                paymentAmount && !['20', '50', '100', '1000', '2000'].includes(paymentAmount)
+                                  ? "border-green-500 bg-green-50 dark:bg-green-950/20" 
+                                  : "border-border hover:border-border/60 hover:bg-muted/30"
+                              )}
+                            >
+                              Custom
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      {/* Service Fee Breakdown - Show immediately when amount is entered */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && (
-                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
-                          <h4 className="text-sm font-medium">Payment Breakdown</h4>
-                          <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span>Offer Amount:</span>
-                              <span>${paymentAmount}</span>
-                            </div>
-                            <div className="flex justify-between text-muted-foreground">
-                              <span>Arena Service Fee ({getServiceFeePercentage(parseFloat(paymentAmount))}%):</span>
-                              <span>${calculateServiceFee(parseFloat(paymentAmount)).toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between font-medium border-t pt-1">
-                              <span>Total to Pay:</span>
-                              <span>${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
                       {/* Payment Method Selection - Show after amount */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && !paymentMethod && (
-                        <div className="space-y-3">
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && (!paymentMethod || paymentStatus !== 'authorized') && (
+                        <div className="space-y-3 pl-4 border-l-2 border-green-200 dark:border-green-800">
                           <div className="space-y-2">
                             <Label className="text-sm font-medium">Choose Payment Method</Label>
-                            <p className="text-xs text-muted-foreground">Select how you'd like to make your payment</p>
+                            {paymentStatus === 'authorized' && (
+                              <p className="text-xs text-orange-600 dark:text-orange-400">
+                                Changing payment method will reset your current authorization
+                              </p>
+                            )}
                           </div>
                           
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-3 gap-3">
                             <button
                               onClick={() => {
+                                resetPaymentDetails();
                                 setPaymentMethod('stripe');
-                                setShowStripeForm(true);
+                                setShowCardForm(true);
                               }}
                               className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all duration-200 group"
                             >
@@ -816,17 +831,14 @@ const InviteUsers: React.FC = () => {
                                 <CreditCard className="w-6 h-4 text-white" />
                               </div>
                               <div className="text-center">
-                                <span className="text-sm font-medium">Credit Card</span>
+                                <span className="text-sm font-medium">Card</span>
                                 <p className="text-xs text-muted-foreground mt-1">Powered by Stripe</p>
                               </div>
                             </button>
                             
                             <button
-                              onClick={() => {
-                                setPaymentMethod('paypal');
-                                setShowPayPalOption(true);
-                              }}
-                              className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all duration-200 group"
+                              disabled
+                              className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border opacity-60 cursor-not-allowed"
                             >
                               <div className="w-12 h-8 bg-blue-500 rounded flex items-center justify-center">
                                 <span className="text-white text-xs font-bold">P</span>
@@ -836,54 +848,136 @@ const InviteUsers: React.FC = () => {
                                 <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
                               </div>
                             </button>
+
+                            <button
+                              disabled
+                              className="flex flex-col items-center gap-3 p-4 rounded-lg border border-border opacity-60 cursor-not-allowed"
+                            >
+                              <div className="w-12 h-8 bg-orange-500 rounded flex items-center justify-center">
+                                <span className="text-white text-xs font-bold">₿</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-sm font-medium">Crypto</span>
+                                <p className="text-xs text-muted-foreground mt-1">Coming soon</p>
+                              </div>
+                            </button>
                           </div>
                         </div>
                       )}
 
                       {/* Stripe Elements Form - Show when Stripe is selected */}
-                      {paymentMethod === 'stripe' && showStripeForm && (
+                      {paymentMethod === 'stripe' && showCardForm && (
                         <div className="space-y-4">
+                          {/* Security & Trust Info Section */}
+                          <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-full bg-green-100 dark:bg-green-900/30">
+                                <Shield className="h-5 w-5 text-green-600" />
+                              </div>
+                              <div className="flex-1 space-y-2">
+                                <h4 className="text-sm font-semibold text-green-800 dark:text-green-200">
+                                  Payment Protection
+                                </h4>
+                                <div className="space-y-1 text-xs text-green-700 dark:text-green-300">
+                                  <p>• Card is processed via Stripe, is encrypted and never stored</p>
+                                  <p>• Payment is held only after the recipient accepts</p>
+                                  <p>• Payment will be charged after the event completion</p>
+                                  <p>• Fully refund if the event does not take place</p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <Label className="text-sm font-medium">Card Details</Label>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  setPaymentMethod('');
-                                  setShowStripeForm(false);
-                                  setPaymentStatus('pending');
-                                  setPaymentIntentId('');
-                                }}
+                                onClick={resetPaymentDetails}
                                 className="text-xs text-muted-foreground hover:text-foreground"
                               >
                                 ← Back
                               </Button>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              Payment will be authorized now and charged after event completion
-                            </p>
                           </div>
                           
                           <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
-                            {/* Stripe Card Element will be mounted here */}
+                            {/* Mock Stripe Card Element */}
                             <div className="space-y-1">
                               <Label className="text-xs font-medium text-muted-foreground">Card Information</Label>
-                              <div 
-                                id="card-element"
-                                className="p-3 border border-input rounded-md bg-background min-h-[40px] flex items-center"
-                              >
-                                {!cardElement && (
-                                  <div className="text-sm text-muted-foreground">
-                                    Loading secure payment form...
-                                  </div>
-                                )}
+                              <div className="p-3 border border-input rounded-md bg-background min-h-[40px] flex items-center">
+                                <input
+                                  type="text"
+                                  placeholder="1234 1234 1234 1234"
+                                  value={cardNumber}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
+                                    const formatted = value.replace(/(\d{4})(?=\d)/g, '$1 ');
+                                    setCardNumber(formatted.substring(0, 19));
+                                    setCardNumberValid(value.length >= 13 && value.length <= 19);
+                                  }}
+                                  className="flex-1 bg-transparent text-sm outline-none"
+                                  maxLength={19}
+                                />
+                                <div className="flex items-center space-x-1 ml-2">
+                                  <div className="w-6 h-4 bg-gray-200 rounded-sm"></div>
+                                  <div className="w-6 h-4 bg-gray-200 rounded-sm"></div>
+                                </div>
                               </div>
-                              {cardElement && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  Enter your card details securely. Payment will be authorized now and charged after event completion.
-                                </p>
-                              )}
+                            </div>
+
+                            {/* Mock Expiry and CVC */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium text-muted-foreground">Expiry Date</Label>
+                                <input
+                                  type="text"
+                                  placeholder="MM/YY"
+                                  value={cardExpiry}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
+                                    let formatted = value;
+                                    if (value.length >= 2) {
+                                      formatted = value.substring(0, 2) + '/' + value.substring(2, 4);
+                                    }
+                                    setCardExpiry(formatted.substring(0, 5));
+                                    setCardExpiryValid(value.length === 4);
+                                  }}
+                                  className="w-full p-3 border border-input rounded-md bg-background text-sm outline-none"
+                                  maxLength={5}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs font-medium text-muted-foreground">CVC</Label>
+                                <input
+                                  type="text"
+                                  placeholder="123"
+                                  value={cardCVC}
+                                  onChange={(e) => {
+                                    const value = e.target.value.replace(/\s/g, '').replace(/[^0-9]/g, '');
+                                    setCardCVC(value.substring(0, 4));
+                                    setCardCVCValid(value.length >= 3);
+                                  }}
+                                  className="w-full p-3 border border-input rounded-md bg-background text-sm outline-none"
+                                  maxLength={4}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Mock Cardholder Name */}
+                            <div className="space-y-1">
+                              <Label className="text-xs font-medium text-muted-foreground">Cardholder Name</Label>
+                              <input
+                                type="text"
+                                placeholder="Name on card"
+                                value={cardholderName}
+                                onChange={(e) => {
+                                  setCardholderName(e.target.value);
+                                  setCardholderNameValid(e.target.value.trim().length > 0);
+                                }}
+                                className="w-full p-3 border border-input rounded-md bg-background text-sm outline-none"
+                              />
                             </div>
                             
                             {/* Security Badge */}
@@ -922,39 +1016,13 @@ const InviteUsers: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Security & Trust Indicators */}
-                      <div className="space-y-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
-                        <h4 className="text-sm font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
-                          <Shield className="h-4 w-4" />
-                          Secure Payment Protection
-                        </h4>
-                        <div className="space-y-1 text-xs text-green-700 dark:text-green-300">
-                          <div className="flex items-center gap-2">
-                            <Check className="h-3 w-3" />
-                            <span>Payment authorized now, charged after event completion</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Check className="h-3 w-3" />
-                            <span>No charge if event doesn't happen</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Check className="h-3 w-3" />
-                            <span>Automatic payment processing when event completes</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Check className="h-3 w-3" />
-                            <span>Bank-level security by Stripe</span>
-                          </div>
-                        </div>
-                      </div>
-
                       {/* Upload Payment Button */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && paymentMethod && paymentStatus === 'pending' && (
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && paymentMethod && paymentStatus !== 'authorized' && (
                         <Button 
                           className="w-full bg-green-600 hover:bg-green-700 text-white"
                           size="lg"
                           onClick={handlePaymentUpload}
-                          disabled={isPaymentProcessing || isAuthorizing || (paymentMethod === 'stripe' && !cardComplete)}
+                          disabled={isPaymentProcessing || isAuthorizing || (paymentMethod === 'stripe' && (!cardNumberValid || !cardExpiryValid || !cardCVCValid || !cardholderNameValid))}
                         >
                           {isPaymentProcessing || isAuthorizing ? (
                             <>
@@ -964,17 +1032,10 @@ const InviteUsers: React.FC = () => {
                           ) : (
                             <>
                               <Shield className="h-4 w-4 mr-2" />
-                              Authorize ${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)} Payment
+                              Offer ${paymentAmount}
                             </>
                           )}
                         </Button>
-                      )}
-
-                      {/* Card Error Display */}
-                      {cardError && (
-                        <div className="p-2 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
-                          <p className="text-xs text-red-600 dark:text-red-400">{cardError}</p>
-                        </div>
                       )}
 
                       {/* Payment Success Message */}
@@ -987,6 +1048,17 @@ const InviteUsers: React.FC = () => {
                           <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                             Your payment is now held securely by Stripe and will be charged after event completion.
                           </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              resetPaymentDetails();
+                              setShowPaymentSection(true);
+                            }}
+                            className="mt-2 text-xs border-green-300 text-green-700 hover:bg-green-100"
+                          >
+                            Update Payment
+                          </Button>
                         </div>
                       )}
 
@@ -1044,7 +1116,7 @@ const InviteUsers: React.FC = () => {
                         })}
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Select platforms where you'd like the recipient to verify their profile
+                        Select platforms where you'd like the recipient to verify
                       </p>
                     </div>
                   </div>
@@ -1136,42 +1208,6 @@ const InviteUsers: React.FC = () => {
                                 : 'Payment will be authorized and held securely by Stripe'
                               }
                             </p>
-                          </div>
-                        </div>
-                        
-                        {/* Payment Breakdown */}
-                        <div className="bg-white dark:bg-gray-900/50 rounded-lg p-2 space-y-1 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-green-700 dark:text-green-300">Offer Amount:</span>
-                            <span className="font-medium">${paymentAmount}</span>
-                          </div>
-                          <div className="flex justify-between text-muted-foreground">
-                            <span>Arena Service Fee ({getServiceFeePercentage(parseFloat(paymentAmount))}%):</span>
-                            <span>${calculateServiceFee(parseFloat(paymentAmount)).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between font-medium border-t pt-1 text-green-700 dark:text-green-300">
-                            <span>Total Paid:</span>
-                            <span>${getTotalAmount(parseFloat(paymentAmount)).toFixed(2)}</span>
-                          </div>
-                        </div>
-
-                        {/* Security Features */}
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" />
-                            <span>Secure Escrow</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" />
-                            <span>Full Refund</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" />
-                            <span>Bank Security</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                            <Check className="h-3 w-3" />
-                            <span>Auto Release</span>
                           </div>
                         </div>
                       </div>
