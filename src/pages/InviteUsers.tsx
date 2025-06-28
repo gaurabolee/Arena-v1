@@ -75,6 +75,10 @@ const InviteUsers: React.FC = () => {
   const [cardCVCValid, setCardCVCValid] = useState(false);
   const [cardholderNameValid, setCardholderNameValid] = useState(false);
 
+  // New state for editing topics
+  const [editingTopicIndex, setEditingTopicIndex] = useState<number | null>(null);
+  const [editingTopicValue, setEditingTopicValue] = useState('');
+
   // Function to reset payment details
   const resetPaymentDetails = () => {
     setPaymentMethod('');
@@ -164,7 +168,7 @@ const InviteUsers: React.FC = () => {
   const getTotalAmount = (amount: number) => {
     return amount + calculateServiceFee(amount);
   };
-
+  
   const handleAddTopic = () => {
     if (currentTopic.trim() && !topics.includes(currentTopic.trim())) {
       setTopics([...topics, currentTopic.trim()]);
@@ -230,6 +234,13 @@ const InviteUsers: React.FC = () => {
     
     // Toggle preview state
     setShowPreview(!showPreview);
+    
+    // If opening preview, scroll to top with smooth animation
+    if (!showPreview) {
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100);
+    }
   };
 
   // Check if form is complete for generating invite
@@ -335,6 +346,39 @@ const InviteUsers: React.FC = () => {
     // Removed auto-collapse - users now have manual control with Done button
   };
 
+  const handleEditTopic = (index: number) => {
+    setEditingTopicIndex(index);
+    setEditingTopicValue(topics[index]);
+  };
+
+  const handleEditTopicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEditingTopicValue(e.target.value);
+  };
+
+  const handleEditTopicSave = (index: number) => {
+    const trimmed = editingTopicValue.trim();
+    if (trimmed && !topics.includes(trimmed)) {
+      const newTopics = [...topics];
+      newTopics[index] = trimmed;
+      setTopics(newTopics);
+    }
+    setEditingTopicIndex(null);
+    setEditingTopicValue('');
+  };
+
+  const handleEditTopicCancel = () => {
+    setEditingTopicIndex(null);
+    setEditingTopicValue('');
+  };
+
+  const handleEditTopicKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === 'Enter') {
+      handleEditTopicSave(index);
+    } else if (e.key === 'Escape') {
+      handleEditTopicCancel();
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -360,10 +404,10 @@ const InviteUsers: React.FC = () => {
                 </div>
 
                 {/* Topics Input */}
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center space-x-4">
-                    <Label className="text-sm font-medium min-w-[120px]">Discussion Topics</Label>
-                    <div className="flex space-x-2 flex-1">
+                    <Label className="text-sm font-medium min-w-[120px]">Topics</Label>
+                    <div className="flex-1 flex items-center space-x-2">
                       <Input
                         placeholder="Add a topic for discussion"
                         value={currentTopic}
@@ -386,24 +430,44 @@ const InviteUsers: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Topics Tags */}
+                  {/* Topics Cards */}
                   {topics.length > 0 && (
-                    <div className="flex flex-wrap gap-2 ml-[136px]">
-                      {topics.map((topic, index) => (
-                        <Badge 
-                          key={index} 
-                          variant="secondary"
-                          className="px-3 py-1 flex items-center space-x-1"
-                        >
-                          <span>{topic}</span>
-                          <button
-                            onClick={() => handleRemoveTopic(topic)}
-                            className="ml-2 hover:text-destructive transition-colors"
+                    <div className="ml-[136px]">
+                      <div className="flex flex-wrap gap-2">
+                        {topics.map((topic, index) => (
+                          <div 
+                            key={index} 
+                            className="group relative bg-background border border-border rounded-lg px-3 py-1 flex items-center max-w-xs overflow-hidden"
+                            title={topic}
                           >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ))}
+                            {editingTopicIndex === index ? (
+                              <input
+                                type="text"
+                                value={editingTopicValue}
+                                onChange={handleEditTopicChange}
+                                onBlur={() => handleEditTopicSave(index)}
+                                onKeyDown={(e) => handleEditTopicKeyDown(e, index)}
+                                className="text-sm font-medium text-foreground bg-transparent outline-none border-none w-full px-0 py-0"
+                                autoFocus
+                              />
+                            ) : (
+                              <span
+                                className="text-sm font-medium text-foreground break-words w-full cursor-pointer"
+                                onClick={() => handleEditTopic(index)}
+                              >
+                                {topic}
+                              </span>
+                            )}
+                            <button
+                              onClick={() => handleRemoveTopic(topic)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-muted rounded-md ml-1"
+                              title="Remove topic"
+                            >
+                              <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -879,10 +943,10 @@ const InviteUsers: React.FC = () => {
                                   Payment Protection
                                 </h4>
                                 <div className="space-y-1 text-xs text-green-700 dark:text-green-300">
-                                  <p>• Card is processed via Stripe, is encrypted and never stored</p>
-                                  <p>• Payment is held only after the recipient accepts</p>
-                                  <p>• Payment will be charged after the event completion</p>
-                                  <p>• Fully refund if the event does not take place</p>
+                                  <p>• We process your card through Stripe with full encryption—your data is never stored.</p>
+                                  <p>• Funds are authorized but only captured once the recipient accepts.</p>
+                                  <p>• Your card is charged only after the event is completed.</p>
+                                  <p>• If the event doesn't happen, you get a full refund—no questions asked.</p>
                                 </div>
                               </div>
                             </div>
@@ -1017,7 +1081,7 @@ const InviteUsers: React.FC = () => {
                       )}
 
                       {/* Upload Payment Button */}
-                      {paymentAmount && parseFloat(paymentAmount) > 0 && paymentMethod && paymentStatus !== 'authorized' && (
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && paymentMethod && (
                         <Button 
                           className="w-full bg-green-600 hover:bg-green-700 text-white"
                           size="lg"
@@ -1037,43 +1101,6 @@ const InviteUsers: React.FC = () => {
                           )}
                         </Button>
                       )}
-
-                      {/* Payment Success Message */}
-                      {paymentStatus === 'authorized' && (
-                        <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
-                          <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                            <Check className="h-4 w-4" />
-                            <span className="text-sm font-medium">Payment Authorized Successfully!</span>
-                          </div>
-                          <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            Your payment is now held securely by Stripe and will be charged after event completion.
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              resetPaymentDetails();
-                              setShowPaymentSection(true);
-                            }}
-                            className="mt-2 text-xs border-green-300 text-green-700 hover:bg-green-100"
-                          >
-                            Update Payment
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* Payment Cancelled Message */}
-                      {paymentStatus === 'cancelled' && (
-                        <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800/30">
-                          <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                            <X className="h-4 w-4" />
-                            <span className="text-sm font-medium">Payment Cancelled</span>
-                          </div>
-                          <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                            No charge will be made. You can try again or choose a different payment method.
-                          </p>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1084,39 +1111,39 @@ const InviteUsers: React.FC = () => {
                     <Label className="text-sm font-medium min-w-[120px] pt-2">Verification Request</Label>
                     <div className="flex-1">
                       <div className="flex flex-wrap gap-2">
-                        {platforms.map((platform) => {
-                          const Icon = platform.icon;
-                          const isSelected = selectedPlatforms.includes(platform.id);
-                          return (
-                            <button
-                              key={platform.id}
+                    {platforms.map((platform) => {
+                      const Icon = platform.icon;
+                      const isSelected = selectedPlatforms.includes(platform.id);
+                      return (
+                        <button
+                          key={platform.id}
                               onClick={() => {
                                 togglePlatform(platform.id);
                                 handleOtherSectionInteraction();
                               }}
-                              title={platform.name}
-                              className={cn(
+                          title={platform.name}
+                          className={cn(
                                 "relative flex items-center justify-center h-10 w-10 rounded-full transition-all duration-200 hover:scale-105",
                                 isSelected 
                                   ? "bg-primary/10 border-2 border-primary/20" 
                                   : "bg-muted/50 border-2 border-transparent hover:bg-muted/70"
-                              )}
-                            >
-                              <Icon className={cn(
-                                "h-5 w-5",
-                                isSelected ? "text-primary" : "text-muted-foreground"
-                              )} />
+                          )}
+                        >
+                          <Icon className={cn(
+                            "h-5 w-5",
+                            isSelected ? "text-primary" : "text-muted-foreground"
+                          )} />
                               {isSelected && (
                                 <div className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-primary rounded-full flex items-center justify-center">
                                   <Check className="h-2 w-2 text-primary-foreground" />
                                 </div>
                               )}
-                            </button>
-                          );
-                        })}
+                        </button>
+                      );
+                    })}
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Select platforms where you'd like the recipient to verify
+                        Select platforms where you'd like the participant to verify
                       </p>
                     </div>
                   </div>
@@ -1125,160 +1152,207 @@ const InviteUsers: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Preview Card */}
+          {/* Full Screen Preview Overlay */}
           {showPreview && (
-            <Card className="border-primary/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Invitation Preview</CardTitle>
-                <CardDescription>
-                  This is how your invitation will appear to the recipient
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <h2 className="text-xl font-semibold">Hi {recipientName},</h2>
-                    <p className="text-muted-foreground">You have been invited to text in Public with:</p>
+            <div className="fixed inset-0 bg-background/95 backdrop-blur-sm z-50 overflow-y-auto">
+              <div className="min-h-screen flex flex-col">
+                {/* Preview Header */}
+                <div className="sticky top-0 bg-background/80 backdrop-blur-md border-b border-border/50 z-10">
+                  <div className="max-w-3xl mx-auto px-4 py-6">
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-muted-foreground">This is how your invitation will appear to the recipient</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preview Content */}
+                <div className="flex-1 flex items-center justify-center py-12">
+                  <div className="max-w-2xl w-full mx-auto px-4">
+                    <Card className="border-primary/20 shadow-2xl relative">
+                      {/* Close button positioned on top right of card */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowPreview(false)}
+                        className="absolute top-4 right-4 text-muted-foreground hover:text-foreground p-2 h-8 w-8 z-10"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                      <CardContent className="p-8">
+                        <div className="space-y-6">
+                          <div className="space-y-3">
+                            <h2 className="text-lg font-medium text-foreground">Hi {recipientName},</h2>
+                            <p className="text-sm text-muted-foreground">You have been invited to text in public with:</p>
                   </div>
 
                   {/* Profile Card */}
-                  <div className="border rounded-lg p-3 bg-muted/20">
-                    <ProfileCard
-                      user={{
-                        name: currentUser?.name || '',
-                        username: currentUser?.username || '',
-                        photoURL: currentUser?.photoURL || undefined,
-                        bio: currentUser?.bio,
-                        socialLinks: currentUser?.socialLinks || {},
-                        verificationStatus: currentUser?.verificationStatus || {},
-                      }}
-                      showActions={false}
-                    />
-                  </div>
+                          <div className="border rounded-lg p-2 bg-muted/20">
+                            <div className="text-[11px] [&_.h-20]:h-10 [&_.w-20]:w-10 [&_.gap-6]:gap-2 [&_.text-2xl]:text-sm [&_.font-medium]:font-normal [&_.mb-1]:mb-0 [&_.mt-3]:mt-1 [&_.text-muted-foreground]:text-[11px] [&_.CardDescription]:text-[11px] [&_.space-y-2]:space-y-0 [&_.h-4]:h-3 [&_.w-4]:w-3 [&_.h-2]:h-1.5 [&_.w-2]:w-1.5 [&_.h-3]:h-2 [&_.w-3]:w-2 [&_.CardContent]:hidden [&_.space-y-2]:space-y-0 [&_.font-medium]:font-normal [&_.font-semibold]:font-normal [&_.bg-background]:bg-transparent [&_.ring-1]:ring-0 [&_.border]:border-none [&_.p-0]:p-0 [&_.hover\\:bg-gray-100]:hover:bg-muted/40 [&_.text-black]:text-muted-foreground [&_.bg-background]:bg-transparent [&_.h-4]:h-3 [&_.w-4]:w-3 [&_.h-3]:h-2 [&_.w-3]:w-2">
+                                <ProfileCard
+                                  user={{
+                                    name: currentUser?.name || '',
+                                    username: currentUser?.username || '',
+                                    photoURL: currentUser?.photoURL || undefined,
+                                    bio: currentUser?.bio,
+                                    socialLinks: {},
+                                    verificationStatus: {},
+                                  }}
+                                  showActions={false}
+                                />
+                                {/* Arena-themed Verified Accounts row */}
+                                <div className="flex gap-2 mt-2">
+                                  {/* LinkedIn */}
+                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
+                                    <svg className="h-3 w-3 text-[#0A66C2]" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.76 0-5 2.24-5 5v14c0 2.76 2.24 5 5 5h14c2.76 0 5-2.24 5-5v-14c0-2.76-2.24-5-5-5zm-11 19h-3v-9h3v9zm-1.5-10.28c-.97 0-1.75-.79-1.75-1.75s.78-1.75 1.75-1.75 1.75.79 1.75 1.75-.78 1.75-1.75 1.75zm15.5 10.28h-3v-4.5c0-1.08-.02-2.47-1.5-2.47-1.5 0-1.73 1.17-1.73 2.39v4.58h-3v-9h2.89v1.23h.04c.4-.75 1.38-1.54 2.84-1.54 3.04 0 3.6 2 3.6 4.59v4.72z"/></svg>
+                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
+                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                                    </span>
+                                  </span>
+                                  {/* X */}
+                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
+                                    <svg className="h-3 w-3 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
+                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                                    </span>
+                                  </span>
+                                  {/* Instagram */}
+                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
+                                    <svg className="h-3 w-3 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608.974-.974 2.241-1.246 3.608-1.308C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.332.013 7.052.072 5.771.131 4.659.414 3.678 1.395c-.98.98-1.263 2.092-1.322 3.373C2.013 5.668 2 6.077 2 12c0 5.923.013 6.332.072 7.612.059 1.281.342 2.393 1.322 3.373.98.98 2.092 1.263 3.373 1.322C8.332 23.987 8.741 24 12 24s3.668-.013 4.948-.072c1.281-.059 2.393-.342 3.373-1.322.98-.98 1.263-2.092 1.322-3.373.059-1.28.072-1.689.072-7.612 0-5.923-.013-6.332-.072-7.612-.059-1.281-.342-2.393-1.322-3.373-.98-.98-2.092-1.263-3.373-1.322C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/></svg>
+                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
+                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+                                    </span>
+                                  </span>
+                                </div>
+                              </div>
+                          </div>
 
                   {/* Topics Section */}
-                  <div className="space-y-2">
-                    <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Discussion Topics</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {topics.map((topic, index) => (
-                        <Badge key={index} variant="secondary" className="px-3 py-1">
-                          {topic}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Payment Section */}
-                  {paymentAmount && (
-                    <div className="space-y-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
-                      <h3 className="font-medium text-sm text-green-800 dark:text-green-200 uppercase tracking-wide flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Secure Payment Upload
-                      </h3>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3">
-                          <div className="p-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
-                            <DollarSign className="h-4 w-4 text-green-600" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 text-lg font-semibold text-green-700 dark:text-green-300">
-                              <span>${paymentAmount}</span>
-                              <Badge 
-                                variant="outline" 
-                                className={cn(
-                                  "text-xs",
-                                  paymentStatus === 'authorized' 
-                                    ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-300"
-                                    : paymentStatus === 'cancelled'
-                                    ? "border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
-                                    : "border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300"
-                                )}
-                              >
-                                {paymentStatus === 'pending' && 'Ready to Authorize'}
-                                {paymentStatus === 'authorized' && 'Payment Authorized'}
-                                {paymentStatus === 'cancelled' && 'Payment Cancelled'}
-                                {paymentStatus === 'completed' && 'Payment Completed'}
-                              </Badge>
+                          <div className="space-y-3">
+                            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Topics</h3>
+                            <div className="space-y-2">
+                              {topics.map((topic, index) => (
+                                <div key={index} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-b-0">
+                                  <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full flex-shrink-0"></div>
+                                  <span className="text-sm text-foreground leading-relaxed">{topic}</span>
+                                </div>
+                              ))}
                             </div>
-                            <p className="text-sm text-green-600 dark:text-green-400">
-                              {paymentStatus === 'authorized' 
-                                ? 'Payment authorized and held securely until event completion'
-                                : paymentStatus === 'cancelled'
-                                ? 'Payment was cancelled - no charge will be made'
-                                : 'Payment will be authorized and held securely by Stripe'
-                              }
-                            </p>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* Event Type Section */}
-                  {eventParameter && eventType && (
-                    <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800/30">
-                      <h3 className="font-medium text-sm text-blue-800 dark:text-blue-200 uppercase tracking-wide">Event Details</h3>
-                      <div className="flex items-center gap-3">
-                        <div className="p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                          {eventType === 'length' ? (
-                            <FileText className="h-4 w-4 text-blue-600" />
-                          ) : (
-                            <Clock className="h-4 w-4 text-orange-600" />
+                          {/* Payment Section */}
+                          {paymentAmount && (
+                            <div className="space-y-3 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
+                              <h3 className="text-sm font-medium text-green-800 dark:text-green-200 uppercase tracking-wide flex items-center gap-2">
+                                <Shield className="h-4 w-4" />
+                                Secure Payment Upload
+                              </h3>
+                              <div className="space-y-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
+                                    <DollarSign className="h-4 w-4 text-green-600" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 text-base font-medium text-green-700 dark:text-green-300">
+                                      <span>${paymentAmount}</span>
+                                      <Badge 
+                                        variant="outline" 
+                                        className={cn(
+                                          "text-xs font-medium",
+                                          paymentStatus === 'authorized' 
+                                            ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-300"
+                                            : paymentStatus === 'cancelled'
+                                            ? "border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
+                                            : "border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300"
+                                        )}
+                                      >
+                                        {paymentStatus === 'pending' && 'Ready to Authorize'}
+                                        {paymentStatus === 'authorized' && 'Payment Authorized'}
+                                        {paymentStatus === 'cancelled' && 'Payment Cancelled'}
+                                        {paymentStatus === 'completed' && 'Payment Completed'}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm text-green-600 dark:text-green-400">
+                                      {paymentStatus === 'authorized' 
+                                        ? 'Payment authorized and held securely until event completion'
+                                        : paymentStatus === 'cancelled'
+                                        ? 'Payment was cancelled - no charge will be made'
+                                        : 'Payment will be authorized and held securely by Stripe'
+                                      }
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           )}
-                        </div>
-                        <div>
-                          <span className="font-medium text-blue-700 dark:text-blue-300">
-                            {getEventDisplayText()}
-                          </span>
-                          <p className="text-sm text-blue-600 dark:text-blue-400">
-                            {eventType === 'length' ? 'Length-based discussion' : 'Time-based discussion'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+
+                          {/* Event Type Section */}
+                          {eventParameter && eventType && (
+                            <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800/30">
+                              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 uppercase tracking-wide">Event Details</h3>
+                              <div className="flex items-center gap-3">
+                                <div className="p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/30">
+                                  {eventType === 'length' ? (
+                                    <FileText className="h-4 w-4 text-blue-600" />
+                                  ) : (
+                                    <Clock className="h-4 w-4 text-orange-600" />
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                    {getEventDisplayText()}
+                                  </span>
+                                  <p className="text-xs text-blue-600 dark:text-blue-400">
+                                    {eventType === 'length' ? 'Length-based discussion' : 'Time-based discussion'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
 
                   {/* Verification requested */}
-                  {selectedPlatforms.length > 0 && (
-                    <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
-                      <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">Verification Requested</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedPlatforms.map(platformId => {
-                          const platform = platforms.find(p => p.id === platformId);
-                          if (!platform) return null;
-                          const Icon = platform.icon;
-                          return (
-                            <div key={platformId} className="flex items-center gap-2 px-2 py-1 bg-background rounded-full border">
-                              <div className="h-4 w-4 rounded-full flex items-center justify-center text-primary bg-primary/10">
-                                <Icon className="h-2.5 w-2.5" />
-                              </div>
-                              <span className="text-sm font-medium">{platform.name}</span>
+                          {selectedPlatforms.length > 0 && (
+                            <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Verification Requested</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedPlatforms.map(platformId => {
+                        const platform = platforms.find(p => p.id === platformId);
+                        if (!platform) return null;
+                        const Icon = platform.icon;
+                        return (
+                                    <div key={platformId} className="flex items-center gap-2 px-3 py-1.5 bg-background rounded-full border text-sm">
+                                      <div className="h-4 w-4 rounded-full flex items-center justify-center text-primary bg-primary/10">
+                                        <Icon className="h-2.5 w-2.5" />
                             </div>
-                          );
-                        })}
-                      </div>
+                                      <span className="font-medium">{platform.name}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
+                          )}
 
                   {/* Action Buttons */}
-                  <div className="flex justify-between items-center pt-3 border-t">
+                          <div className="flex justify-between items-center pt-4 border-t">
                     <Button 
                       variant="outline"
-                      className="w-28"
+                              size="sm"
+                              className="w-28 h-9 text-sm font-medium"
                       disabled
                     >
                       Accept
                     </Button>
                     <Button 
                       variant="outline" 
-                      className="w-28"
+                              size="sm"
+                              className="w-28 h-9 text-sm font-medium"
                       disabled
                     >
                       Edit Topics
                     </Button>
                     <Button 
                       variant="outline" 
-                      className="w-28"
+                              size="sm"
+                              className="w-28 h-9 text-sm font-medium"
                       disabled
                     >
                       Decline
@@ -1287,15 +1361,23 @@ const InviteUsers: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex justify-center gap-4 mt-6">
+          <div className="flex justify-center gap-4 mt-8">
             <Button 
               onClick={handlePreview}
               disabled={!recipientName || (topics.length === 0 && !currentTopic.trim())}
-              variant="outline"
-              className="w-40 h-11 text-base font-medium"
+              className={cn(
+                "h-11 px-6 font-medium transition-all duration-200",
+                showPreview 
+                  ? "bg-muted/50 text-muted-foreground hover:bg-muted border border-border" 
+                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+              )}
             >
               {showPreview ? "Hide Preview" : "Preview"}
             </Button>
@@ -1303,7 +1385,12 @@ const InviteUsers: React.FC = () => {
               onClick={generateInviteLink}
               disabled={!isFormComplete}
               variant="outline"
-              className="w-40 h-11 text-base font-medium"
+              className={cn(
+                "h-11 px-6 font-medium border-2 transition-all duration-200",
+                isFormComplete
+                  ? "border-primary text-primary hover:bg-primary/5"
+                  : "border-border text-muted-foreground"
+              )}
             >
               <Copy className="mr-2 h-4 w-4" />
               Copy Invite Link

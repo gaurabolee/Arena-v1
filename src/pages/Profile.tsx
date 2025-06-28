@@ -619,7 +619,7 @@ const Profile: React.FC<ProfileProps> = () => {
     const updatedStatus: SocialVerification = {
       ...verificationStatus,
       [platform]: { 
-        status: 'pending',
+        status: 'pending', 
         code: code,
         timestamp: Date.now()
       }
@@ -915,7 +915,7 @@ const Profile: React.FC<ProfileProps> = () => {
                       className="rounded-lg px-3 py-1 font-medium h-7 text-xs inline-flex items-center gap-1"
                       onClick={() => {
                         if (selectedPlatform) {
-                          navigator.clipboard.writeText(verificationStatus[selectedPlatform]?.code || '');
+                        navigator.clipboard.writeText(verificationStatus[selectedPlatform]?.code || '');
                           toast.success('Verification code copied! Go to your social profile to paste it in the URL.');
                         }
                       }}
