@@ -21,6 +21,14 @@ const iconMap: Record<string, React.FC<{ className?: string }>> = {
   tiktok: TikTokIcon,
 };
 
+const platforms = [
+  { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: 'bg-[#0A66C2]' },
+  { id: 'twitter', name: 'X', icon: XIcon, color: 'bg-black' },
+  { id: 'facebook', name: 'Facebook', icon: Facebook, color: 'bg-[#1877F2]' },
+  { id: 'instagram', name: 'Instagram', icon: Instagram, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' },
+  { id: 'youtube', name: 'YouTube', icon: Youtube, color: 'bg-[#FF0000]' },
+];
+
 interface ProfileCardProps {
   user: {
     name: string;
@@ -89,21 +97,26 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ user, showActions = true }) =
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium">Verified Accounts</h3>
-          <div className="flex flex-wrap gap-3">
-            {Object.entries(user.verificationStatus || {}).map(([platform, status]) => {
-              if (status.status !== 'verified') return null;
-              const Icon = iconMap[platform] || UserIcon;
+        <div>
+          <h3 className="text-sm font-medium m-0 p-0 leading-none">Verified Accounts</h3>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {platforms.map((platform) => {
+              const isVerified = user.verificationStatus?.[platform.id]?.status === 'verified';
+              if (!isVerified) return null;
+              const Icon = platform.icon;
               return (
-                <a key={platform} href={user.socialLinks[platform] || ''} target="_blank" rel="noopener noreferrer">
-                  <Button variant="ghost" size="icon" className="relative p-0 text-black hover:text-gray-800 hover:bg-gray-100">
-                    <Icon className="h-4 w-4 text-black" />
-                    <div className="absolute -top-1 -right-1">
-                      <Check className="h-3 w-3 bg-background rounded-full p-0.5 text-black" />
-                    </div>
-                  </Button>
-                </a>
+                <div
+                  key={platform.id}
+                  title={platform.name}
+                  className={
+                    "relative flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 border-2 border-primary/20"
+                  }
+                >
+                  <Icon className="h-5 w-5 text-primary" />
+                  <div className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-primary rounded-full flex items-center justify-center">
+                    <Check className="h-2 w-2 text-primary-foreground" />
+                  </div>
+                </div>
               );
             })}
           </div>

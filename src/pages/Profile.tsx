@@ -929,7 +929,7 @@ const Profile: React.FC<ProfileProps> = () => {
                 <div className="flex flex-col items-center gap-1">
                   <span className="text-xs font-medium text-muted-foreground mb-1">Step 2</span>
                   <span className="text-xs font-medium text-foreground text-center">
-                    Go to your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'social'} profile, paste the verification code and take a screenshot showing the full URL.
+                    Go to your {selectedPlatform ? selectedPlatform.charAt(0).toUpperCase() + selectedPlatform.slice(1) : 'social'} profile, paste the verification code into the URL, and take a screenshot showing the full URL and your profile page.
                   </span>
                 </div>
                 <div className="w-full border-t border-border my-2" />

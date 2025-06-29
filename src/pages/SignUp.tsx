@@ -50,8 +50,6 @@ const SignUp: React.FC = () => {
       // Use the register function from AuthContext which handles both Firebase Auth and user data
       await register(name, email, username, password);
       
-      toast.success('Account created successfully!');
-      
       // Navigate to profile page
       navigate('/profile', {
         replace: true,

@@ -45,6 +45,9 @@ const InviteUsers: React.FC = () => {
   const [showPaymentSection, setShowPaymentSection] = useState(false);
   const [showEventSection, setShowEventSection] = useState(false);
   
+  // Toggle state for incentivize mode
+  const [incentivizeEnabled, setIncentivizeEnabled] = useState(true);
+  
   // Custom value states
   const [customWordCount, setCustomWordCount] = useState('');
   const [customTimePeriod, setCustomTimePeriod] = useState('');
@@ -197,10 +200,10 @@ const InviteUsers: React.FC = () => {
     const encodedName = encodeURIComponent(recipientName);
     const encodedTopics = encodeURIComponent(topics.join(','));
     const encodedPlatforms = encodeURIComponent(selectedPlatforms.join(','));
-    const encodedPayment = encodeURIComponent(JSON.stringify({
+    const encodedPayment = incentivizeEnabled ? encodeURIComponent(JSON.stringify({
       amount: paymentAmount,
       method: paymentMethod
-    }));
+    })) : '';
     const encodedEvent = encodeURIComponent(JSON.stringify({
       type: eventType,
       parameter: eventParameter,
@@ -210,7 +213,10 @@ const InviteUsers: React.FC = () => {
       timePeriod: eventType === 'length' ? eventTimePeriod : null
     }));
     
-    const inviteLink = `${baseUrl}/invite/${currentUser.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}&payment=${encodedPayment}&event=${encodedEvent}`;
+    const inviteLink = incentivizeEnabled 
+      ? `${baseUrl}/invite/${currentUser.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}&payment=${encodedPayment}&event=${encodedEvent}`
+      : `${baseUrl}/invite/${currentUser.username}?name=${encodedName}&topics=${encodedTopics}&verify=${encodedPlatforms}&event=${encodedEvent}`;
+    
     navigator.clipboard.writeText(inviteLink);
     toast.success('Invite link copied to clipboard');
   };
@@ -246,16 +252,18 @@ const InviteUsers: React.FC = () => {
   // Check if form is complete for generating invite
   const isFormComplete = recipientName && 
     (topics.length > 0 || currentTopic.trim()) && 
-    paymentAmount && 
-    paymentMethod && 
+    (incentivizeEnabled ? (
+      paymentAmount && 
+      paymentMethod && 
+      paymentStatus === 'authorized'
+    ) : true) &&
     ((eventParameter && eventParameter !== 'custom') || 
      (eventParameter === 'custom' && 
       ((eventType === 'length' && customWordCount) || 
        (eventType === 'time' && customDuration)))) &&
     (eventType !== 'length' || 
      (eventTimePeriod && 
-      (eventTimePeriod !== 'custom' || (eventTimePeriod === 'custom' && customTimePeriod)))) &&
-    paymentStatus === 'authorized';
+      (eventTimePeriod !== 'custom' || (eventTimePeriod === 'custom' && customTimePeriod))));
 
   const handleAccept = () => {
     // TODO: Implement accept logic
@@ -775,37 +783,83 @@ const InviteUsers: React.FC = () => {
                 {/* Payment Section */}
                 <div className="space-y-2">
                   <button
-                    onClick={() => {
-                      setShowPaymentSection(!showPaymentSection);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!incentivizeEnabled) {
+                        // If toggle is OFF, turn it ON and expand the section
+                        setIncentivizeEnabled(true);
+                        setShowPaymentSection(true);
+                      } else {
+                        // If toggle is ON, just toggle the section visibility
+                        setShowPaymentSection(!showPaymentSection);
+                      }
                       handleOtherSectionInteraction();
                     }}
                     className="flex items-center justify-between w-full p-3 rounded-lg border border-border hover:bg-muted/30 transition-all duration-200 hover:border-border/60"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-1.5 rounded-full bg-green-100 dark:bg-green-900/20">
-                        <DollarSign className="h-4 w-4 text-green-600" />
+                      <div className={cn(
+                        "p-1.5 rounded-full transition-all duration-200",
+                        incentivizeEnabled 
+                          ? "bg-green-100 dark:bg-green-900/20" 
+                          : "bg-gray-100 dark:bg-gray-800"
+                      )}>
+                        <DollarSign className={cn(
+                          "h-4 w-4 transition-all duration-200",
+                          incentivizeEnabled 
+                            ? "text-green-600" 
+                            : "text-gray-400"
+                        )} />
                       </div>
                       <div className="text-left">
-                        <span className="text-sm font-medium">Incentivize Recipient</span>
-                        {paymentAmount ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">Incentivize Recipient</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIncentivizeEnabled(!incentivizeEnabled);
+                              if (!incentivizeEnabled) {
+                                setShowPaymentSection(false);
+                              }
+                            }}
+                            className={cn(
+                              "relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50",
+                              incentivizeEnabled 
+                                ? "bg-primary" 
+                                : "bg-gray-300 dark:bg-gray-600"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm",
+                                incentivizeEnabled ? "translate-x-4" : "translate-x-0.5"
+                              )}
+                            />
+                          </button>
+                        </div>
+                        {incentivizeEnabled && paymentAmount ? (
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/30 px-2 py-1 rounded-md">
                               ${paymentAmount} offered
                             </p>
                           </div>
-                        ) : (
+                        ) : incentivizeEnabled ? (
                           <p className="text-xs text-muted-foreground">Show appreciation for their time with a secure payment</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No payment required for this discussion</p>
                         )}
                       </div>
                     </div>
-                    {showPaymentSection ? (
+                    {incentivizeEnabled && showPaymentSection ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                    ) : incentivizeEnabled ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     ) : (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     )}
                   </button>
 
-                  {showPaymentSection && (
+                  {incentivizeEnabled && showPaymentSection && (
                     <div className="pl-6 space-y-4 pt-2">
                       {/* Offer Amount - Show First */}
                       <div className="space-y-1.5">
@@ -1186,8 +1240,8 @@ const InviteUsers: React.FC = () => {
                   </div>
 
                   {/* Profile Card */}
-                          <div className="border rounded-lg p-2 bg-muted/20">
-                            <div className="text-[11px] [&_.h-20]:h-10 [&_.w-20]:w-10 [&_.gap-6]:gap-2 [&_.text-2xl]:text-sm [&_.font-medium]:font-normal [&_.mb-1]:mb-0 [&_.mt-3]:mt-1 [&_.text-muted-foreground]:text-[11px] [&_.CardDescription]:text-[11px] [&_.space-y-2]:space-y-0 [&_.h-4]:h-3 [&_.w-4]:w-3 [&_.h-2]:h-1.5 [&_.w-2]:w-1.5 [&_.h-3]:h-2 [&_.w-3]:w-2 [&_.CardContent]:hidden [&_.space-y-2]:space-y-0 [&_.font-medium]:font-normal [&_.font-semibold]:font-normal [&_.bg-background]:bg-transparent [&_.ring-1]:ring-0 [&_.border]:border-none [&_.p-0]:p-0 [&_.hover\\:bg-gray-100]:hover:bg-muted/40 [&_.text-black]:text-muted-foreground [&_.bg-background]:bg-transparent [&_.h-4]:h-3 [&_.w-4]:w-3 [&_.h-3]:h-2 [&_.w-3]:w-2">
+                          <div className="border rounded-xl p-4 bg-gradient-to-br from-muted/30 to-muted/10 shadow-sm">
+                            <div className="text-[11px] [&_.h-20]:h-10 [&_.w-20]:w-10 [&_.gap-6]:gap-2 [&_.text-2xl]:text-sm [&_.font-medium]:font-semibold [&_.mb-1]:mb-0.5 [&_.mt-3]:mt-1.5 [&_.text-muted-foreground]:text-[11px] [&_.CardDescription]:text-[11px] [&_.space-y-2]:space-y-0.5 [&_.h-4]:h-3.5 [&_.w-4]:w-3.5 [&_.h-2]:h-1.5 [&_.w-2]:w-1.5 [&_.h-3]:h-2.5 [&_.w-3]:w-2.5 [&_.CardContent]:hidden [&_.space-y-2]:space-y-0.5 [&_.font-medium]:font-semibold [&_.font-semibold]:font-semibold [&_.bg-background]:bg-transparent [&_.ring-1]:ring-0 [&_.border]:border-none [&_.p-0]:p-0 [&_.hover\\:bg-gray-100]:hover:bg-muted/40 [&_.text-black]:text-foreground [&_.bg-background]:bg-transparent [&_.h-4]:h-3.5 [&_.w-4]:w-3.5 [&_.h-3]:h-2.5 [&_.w-3]:w-2.5">
                                 <ProfileCard
                                   user={{
                                     name: currentUser?.name || '',
@@ -1199,29 +1253,26 @@ const InviteUsers: React.FC = () => {
                                   }}
                                   showActions={false}
                                 />
-                                {/* Arena-themed Verified Accounts row */}
-                                <div className="flex gap-2 mt-2">
+                                {/* Social Verification Badges */}
+                                <div className="flex flex-wrap gap-2">
                                   {/* LinkedIn */}
-                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
-                                    <svg className="h-3 w-3 text-[#0A66C2]" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.76 0-5 2.24-5 5v14c0 2.76 2.24 5 5 5h14c2.76 0 5-2.24 5-5v-14c0-2.76-2.24-5-5-5zm-11 19h-3v-9h3v9zm-1.5-10.28c-.97 0-1.75-.79-1.75-1.75s.78-1.75 1.75-1.75 1.75.79 1.75 1.75-.78 1.75-1.75 1.75zm15.5 10.28h-3v-4.5c0-1.08-.02-2.47-1.5-2.47-1.5 0-1.73 1.17-1.73 2.39v4.58h-3v-9h2.89v1.23h.04c.4-.75 1.38-1.54 2.84-1.54 3.04 0 3.6 2 3.6 4.59v4.72z"/></svg>
-                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
-                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-                                    </span>
-                                  </span>
-                                  {/* X */}
-                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
-                                    <svg className="h-3 w-3 text-black" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
-                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-                                    </span>
-                                  </span>
+                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
+                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M19 0h-14c-2.76 0-5 2.24-5 5v14c0 2.76 2.24 5 5 5h14c2.76 0 5-2.24 5-5v-14c0-2.76-2.24-5-5-5zm-11 19h-3v-9h3v9zm-1.5-10.28c-.97 0-1.75-.79-1.75-1.75s.78-1.75 1.75-1.75 1.75.79 1.75 1.75-.78 1.75-1.75 1.75zm15.5 10.28h-3v-4.5c0-1.08-.02-2.47-1.5-2.47-1.5 0-1.73 1.17-1.73 2.39v4.58h-3v-9h2.89v1.23h.04c.4-.75 1.38-1.54 2.84-1.54 3.04 0 3.6 2 3.6 4.59v4.72z"/>
+                                    </svg>
+                                  </div>
+                                  {/* X/Twitter */}
+                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
+                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                    </svg>
+                                  </div>
                                   {/* Instagram */}
-                                  <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-muted/40 border border-border">
-                                    <svg className="h-3 w-3 text-pink-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608.974-.974 2.241-1.246 3.608-1.308C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.332.013 7.052.072 5.771.131 4.659.414 3.678 1.395c-.98.98-1.263 2.092-1.322 3.373C2.013 5.668 2 6.077 2 12c0 5.923.013 6.332.072 7.612.059 1.281.342 2.393 1.322 3.373.98.98 2.092 1.263 3.373 1.322C8.332 23.987 8.741 24 12 24s3.668-.013 4.948-.072c1.281-.059 2.393-.342 3.373-1.322.98-.98 1.263-2.092 1.322-3.373.059-1.28.072-1.689.072-7.612 0-5.923-.013-6.332-.072-7.612-.059-1.281-.342-2.393-1.322-3.373-.98-.98-2.092-1.263-3.373-1.322C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/></svg>
-                                    <span className="inline-block h-3 w-3 rounded-full border border-green-400 bg-white flex items-center justify-center ml-1">
-                                      <svg className="h-2 w-2 text-green-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-                                    </span>
-                                  </span>
+                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
+                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608.974-.974 2.241-1.246 3.608-1.308C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.332.013 7.052.072 5.771.131 4.659.414 3.678 1.395c-.98.98-1.263 2.092-1.322 3.373C2.013 5.668 2 6.077 2 12c0 5.923.013 6.332.072 7.612.059 1.281.342 2.393 1.322 3.373.98.98 2.092 1.263 3.373 1.322C8.332 23.987 8.741 24 12 24s3.668-.013 4.948-.072c1.281-.059 2.393-.342 3.373-1.322.98-.98 1.263-2.092 1.322-3.373.059-1.28.072-1.689.072-7.612 0-5.923-.013-6.332-.072-7.612-.059-1.281-.342-2.393-1.322-3.373-.98-.98-2.092-1.263-3.373-1.322C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/>
+                                    </svg>
+                                  </div>
                                 </div>
                               </div>
                           </div>
