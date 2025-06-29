@@ -789,6 +789,56 @@ const Profile: React.FC<ProfileProps> = () => {
                 <p className="mt-3 text-muted-foreground">
                   {formData.bio || 'Tell us about yourself...'}
                 </p>
+                {/* Verified Accounts Section */}
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold mb-2">Verified Accounts</h3>
+                  <div className="flex flex-row gap-4">
+                    {/* LinkedIn */}
+                    <div className="relative flex items-center justify-center">
+                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
+                        <Linkedin className="h-5 w-5 text-foreground" />
+                      </span>
+                      {verificationStatus.linkedin?.status === 'verified' && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
+                          <Check className="h-3 w-3 text-primary" />
+                        </span>
+                      )}
+                    </div>
+                    {/* X (Twitter) */}
+                    <div className="relative flex items-center justify-center">
+                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
+                        <Twitter className="h-5 w-5 text-foreground" />
+                      </span>
+                      {verificationStatus.twitter?.status === 'verified' && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
+                          <Check className="h-3 w-3 text-primary" />
+                        </span>
+                      )}
+                    </div>
+                    {/* Facebook */}
+                    <div className="relative flex items-center justify-center">
+                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
+                        <Facebook className="h-5 w-5 text-foreground" />
+                      </span>
+                      {verificationStatus.facebook?.status === 'verified' && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
+                          <Check className="h-3 w-3 text-primary" />
+                        </span>
+                      )}
+                    </div>
+                    {/* Instagram */}
+                    <div className="relative flex items-center justify-center">
+                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
+                        <Instagram className="h-5 w-5 text-foreground" />
+                      </span>
+                      {verificationStatus.instagram?.status === 'verified' && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
+                          <Check className="h-3 w-3 text-primary" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
               
               <div className="mt-4 sm:mt-0 sm:ml-auto flex gap-2">

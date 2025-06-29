@@ -265,6 +265,9 @@ const InviteUsers: React.FC = () => {
      (eventTimePeriod && 
       (eventTimePeriod !== 'custom' || (eventTimePeriod === 'custom' && customTimePeriod))));
 
+  // Simpler condition for copy invite link - only requires basic info
+  const canCopyInviteLink = recipientName && (topics.length > 0 || currentTopic.trim());
+
   const handleAccept = () => {
     // TODO: Implement accept logic
     toast.success('Invitation accepted');
@@ -823,16 +826,20 @@ const InviteUsers: React.FC = () => {
                               }
                             }}
                             className={cn(
-                              "relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50",
+                              "relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50 overflow-hidden",
                               incentivizeEnabled 
                                 ? "bg-primary" 
                                 : "bg-gray-300 dark:bg-gray-600"
                             )}
                           >
+                            {/* Black segment on the right when ON */}
+                            {incentivizeEnabled && (
+                              <span className="absolute right-0 top-0 h-4 w-3.5 bg-black rounded-r-full z-0" />
+                            )}
                             <span
                               className={cn(
-                                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm",
-                                incentivizeEnabled ? "translate-x-4" : "translate-x-0.5"
+                                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform border border-black/30 dark:border-white/60 z-10",
+                                incentivizeEnabled ? "translate-x-4 shadow-[6px_0_0_0_rgba(0,0,0,1)]" : "translate-x-0.5 shadow-sm"
                               )}
                             />
                           </button>
@@ -1188,7 +1195,7 @@ const InviteUsers: React.FC = () => {
                             isSelected ? "text-primary" : "text-muted-foreground"
                           )} />
                               {isSelected && (
-                                <div className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-primary rounded-full flex items-center justify-center">
+                                <div className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-primary rounded-full flex items-center justify-center border border-border shadow">
                                   <Check className="h-2 w-2 text-primary-foreground" />
                                 </div>
                               )}
@@ -1235,54 +1242,93 @@ const InviteUsers: React.FC = () => {
                       <CardContent className="p-8">
                         <div className="space-y-6">
                           <div className="space-y-3">
-                            <h2 className="text-lg font-medium text-foreground">Hi {recipientName},</h2>
+                            <h2 className="text-xl font-medium text-foreground">Hi {recipientName},</h2>
                             <p className="text-sm text-muted-foreground">You have been invited to text in public with:</p>
-                  </div>
-
-                  {/* Profile Card */}
-                          <div className="border rounded-xl p-4 bg-gradient-to-br from-muted/30 to-muted/10 shadow-sm">
-                            <div className="text-[11px] [&_.h-20]:h-10 [&_.w-20]:w-10 [&_.gap-6]:gap-2 [&_.text-2xl]:text-sm [&_.font-medium]:font-semibold [&_.mb-1]:mb-0.5 [&_.mt-3]:mt-1.5 [&_.text-muted-foreground]:text-[11px] [&_.CardDescription]:text-[11px] [&_.space-y-2]:space-y-0.5 [&_.h-4]:h-3.5 [&_.w-4]:w-3.5 [&_.h-2]:h-1.5 [&_.w-2]:w-1.5 [&_.h-3]:h-2.5 [&_.w-3]:w-2.5 [&_.CardContent]:hidden [&_.space-y-2]:space-y-0.5 [&_.font-medium]:font-semibold [&_.font-semibold]:font-semibold [&_.bg-background]:bg-transparent [&_.ring-1]:ring-0 [&_.border]:border-none [&_.p-0]:p-0 [&_.hover\\:bg-gray-100]:hover:bg-muted/40 [&_.text-black]:text-foreground [&_.bg-background]:bg-transparent [&_.h-4]:h-3.5 [&_.w-4]:w-3.5 [&_.h-3]:h-2.5 [&_.w-3]:w-2.5">
-                                <ProfileCard
-                                  user={{
-                                    name: currentUser?.name || '',
-                                    username: currentUser?.username || '',
-                                    photoURL: currentUser?.photoURL || undefined,
-                                    bio: currentUser?.bio,
-                                    socialLinks: {},
-                                    verificationStatus: {},
-                                  }}
-                                  showActions={false}
-                                />
-                                {/* Social Verification Badges */}
-                                <div className="flex flex-wrap gap-2">
-                                  {/* LinkedIn */}
-                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
-                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                                      <path d="M19 0h-14c-2.76 0-5 2.24-5 5v14c0 2.76 2.24 5 5 5h14c2.76 0 5-2.24 5-5v-14c0-2.76-2.24-5-5-5zm-11 19h-3v-9h3v9zm-1.5-10.28c-.97 0-1.75-.79-1.75-1.75s.78-1.75 1.75-1.75 1.75.79 1.75 1.75-.78 1.75-1.75 1.75zm15.5 10.28h-3v-4.5c0-1.08-.02-2.47-1.5-2.47-1.5 0-1.73 1.17-1.73 2.39v4.58h-3v-9h2.89v1.23h.04c.4-.75 1.38-1.54 2.84-1.54 3.04 0 3.6 2 3.6 4.59v4.72z"/>
-                                    </svg>
-                                  </div>
-                                  {/* X/Twitter */}
-                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
-                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                                    </svg>
-                                  </div>
-                                  {/* Instagram */}
-                                  <div className="h-6 w-6 rounded-full flex items-center justify-center text-primary bg-primary/10">
-                                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608.974-.974 2.241-1.246 3.608-1.308C8.416 2.175 8.796 2.163 12 2.163zm0-2.163C8.741 0 8.332.013 7.052.072 5.771.131 4.659.414 3.678 1.395c-.98.98-1.263 2.092-1.322 3.373C2.013 5.668 2 6.077 2 12c0 5.923.013 6.332.072 7.612.059 1.281.342 2.393 1.322 3.373.98.98 2.092 1.263 3.373 1.322C8.332 23.987 8.741 24 12 24s3.668-.013 4.948-.072c1.281-.059 2.393-.342 3.373-1.322.98-.98 1.263-2.092 1.322-3.373.059-1.28.072-1.689.072-7.612 0-5.923-.013-6.332-.072-7.612-.059-1.281-.342-2.393-1.322-3.373-.98-.98-2.092-1.263-3.373-1.322C15.668.013 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z"/>
-                                    </svg>
-                                  </div>
-                                </div>
-                              </div>
                           </div>
 
-                  {/* Topics Section */}
-                          <div className="space-y-3">
+                          {/* Profile Card (from Profile.tsx) */}
+                          <div className="bg-background border border-border rounded-lg p-6 shadow-sm mb-4 transition-all duration-200 hover:shadow-md hover:border-primary/40 cursor-pointer flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                              <div className="relative">
+                                <Avatar className="h-16 w-16">
+                                  <AvatarImage 
+                                    src={currentUser?.photoURL || undefined} 
+                                    alt={currentUser?.name}
+                                    className="object-cover"
+                                  />
+                                  <AvatarFallback>
+                                    {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : <User className="h-10 w-10" />}
+                                  </AvatarFallback>
+                                </Avatar>
+                              </div>
+                              <div className="flex-1 text-center sm:text-left">
+                                <div className="flex flex-col gap-0.5 items-center sm:items-start">
+                                  <span className="text-xl font-medium text-card-foreground">{currentUser?.name}</span>
+                                  <span className="text-sm text-muted-foreground">@{currentUser?.username}</span>
+                                </div>
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                  {currentUser?.bio || 'Tell us about yourself...'}
+                                </p>
+                              </div>
+                            </div>
+                            {/* Verified Accounts Section */}
+                            <div>
+                              <h3 className="text-xs font-medium text-muted-foreground tracking-wide mb-1">Verified Accounts</h3>
+                              <div className="flex flex-row gap-3 justify-center sm:justify-start">
+                                {/* LinkedIn */}
+                                <div className="relative flex items-center justify-center">
+                                  <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border border-border">
+                                    <Linkedin className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                  {currentUser?.verificationStatus?.linkedin?.status === 'verified' && (
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-card rounded-full flex items-center justify-center border border-border shadow">
+                                      <Check className="h-2 w-2 text-primary" />
+                                    </span>
+                                  )}
+                                </div>
+                                {/* X (Twitter) */}
+                                <div className="relative flex items-center justify-center">
+                                  <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border border-border">
+                                    <X className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                  {currentUser?.verificationStatus?.twitter?.status === 'verified' && (
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-card rounded-full flex items-center justify-center border border-border shadow">
+                                      <Check className="h-2 w-2 text-primary" />
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Facebook */}
+                                <div className="relative flex items-center justify-center">
+                                  <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border border-border">
+                                    <Facebook className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                  {currentUser?.verificationStatus?.facebook?.status === 'verified' && (
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-card rounded-full flex items-center justify-center border border-border shadow">
+                                      <Check className="h-2 w-2 text-primary" />
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Instagram */}
+                                <div className="relative flex items-center justify-center">
+                                  <span className="h-8 w-8 rounded-full bg-muted flex items-center justify-center border border-border">
+                                    <Instagram className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                  {currentUser?.verificationStatus?.instagram?.status === 'verified' && (
+                                    <span className="absolute -top-1 -right-1 h-3 w-3 bg-card rounded-full flex items-center justify-center border border-border shadow">
+                                      <Check className="h-2 w-2 text-primary" />
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Topics Section (moved below profile card) */}
+                          <div className="space-y-3 mb-4">
                             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Topics</h3>
-                            <div className="space-y-2">
+                            <div className="space-y-0.5">
                               {topics.map((topic, index) => (
-                                <div key={index} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-b-0">
+                                <div key={index} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-b-0">
                                   <div className="w-1.5 h-1.5 bg-muted-foreground/40 rounded-full flex-shrink-0"></div>
                                   <span className="text-sm text-foreground leading-relaxed">{topic}</span>
                                 </div>
@@ -1290,96 +1336,40 @@ const InviteUsers: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Payment Section */}
-                          {paymentAmount && (
-                            <div className="space-y-3 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800/30">
-                              <h3 className="text-sm font-medium text-green-800 dark:text-green-200 uppercase tracking-wide flex items-center gap-2">
-                                <Shield className="h-4 w-4" />
-                                Secure Payment Upload
-                              </h3>
-                              <div className="space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-1.5 rounded-full bg-green-100 dark:bg-green-900/30">
-                                    <DollarSign className="h-4 w-4 text-green-600" />
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 text-base font-medium text-green-700 dark:text-green-300">
-                                      <span>${paymentAmount}</span>
-                                      <Badge 
-                                        variant="outline" 
-                                        className={cn(
-                                          "text-xs font-medium",
-                                          paymentStatus === 'authorized' 
-                                            ? "border-green-300 dark:border-green-700 text-green-700 dark:text-green-300"
-                                            : paymentStatus === 'cancelled'
-                                            ? "border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
-                                            : "border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300"
-                                        )}
-                                      >
-                                        {paymentStatus === 'pending' && 'Ready to Authorize'}
-                                        {paymentStatus === 'authorized' && 'Payment Authorized'}
-                                        {paymentStatus === 'cancelled' && 'Payment Cancelled'}
-                                        {paymentStatus === 'completed' && 'Payment Completed'}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-sm text-green-600 dark:text-green-400">
-                                      {paymentStatus === 'authorized' 
-                                        ? 'Payment authorized and held securely until event completion'
-                                        : paymentStatus === 'cancelled'
-                                        ? 'Payment was cancelled - no charge will be made'
-                                        : 'Payment will be authorized and held securely by Stripe'
-                                      }
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
+                          {/* Event Details Section (no box, like topics) */}
+                          <div className="space-y-3 mb-2">
+                            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Event Details</h3>
+                            <div className="flex items-center gap-2 py-1">
+                              <span className="text-sm text-foreground leading-relaxed">{getEventDisplayText()}</span>
                             </div>
-                          )}
-
-                          {/* Event Type Section */}
-                          {eventParameter && eventType && (
-                            <div className="space-y-3 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800/30">
-                              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 uppercase tracking-wide">Event Details</h3>
-                              <div className="flex items-center gap-3">
-                                <div className="p-1.5 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                                  {eventType === 'length' ? (
-                                    <FileText className="h-4 w-4 text-blue-600" />
-                                  ) : (
-                                    <Clock className="h-4 w-4 text-orange-600" />
-                                  )}
-                                </div>
-                                <div>
-                                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                    {getEventDisplayText()}
-                                  </span>
-                                  <p className="text-xs text-blue-600 dark:text-blue-400">
-                                    {eventType === 'length' ? 'Length-based discussion' : 'Time-based discussion'}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                  {/* Verification requested */}
-                          {selectedPlatforms.length > 0 && (
-                            <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
-                              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Verification Requested</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedPlatforms.map(platformId => {
-                        const platform = platforms.find(p => p.id === platformId);
-                        if (!platform) return null;
-                        const Icon = platform.icon;
-                        return (
-                                    <div key={platformId} className="flex items-center gap-2 px-3 py-1.5 bg-background rounded-full border text-sm">
-                                      <div className="h-4 w-4 rounded-full flex items-center justify-center text-primary bg-primary/10">
-                                        <Icon className="h-2.5 w-2.5" />
-                            </div>
-                                      <span className="font-medium">{platform.name}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+
+                          {/* Payment Section (compact, like topics/event details) */}
+                          <div className="space-y-3 mb-2">
+                            <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Offer Amount</h3>
+                            <div className="flex flex-col gap-1 py-1">
+                              <span className="text-sm text-foreground leading-relaxed">${paymentAmount || '0'}</span>
+                              <span className="text-xs text-muted-foreground">Subject to 5% platform fee. Amount will be held by Arena immediately after acceptance and will be deposited after successful event completion.</span>
+                            </div>
+                          </div>
+
+                          {/* Verification requested */}
+                          {selectedPlatforms.length > 0 && (
+                            <div className="space-y-3 mb-2">
+                              <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Verification Requested</h3>
+                              <div className="flex items-center gap-2 py-1">
+                                {selectedPlatforms.map(platformId => {
+                                  const platform = platforms.find(p => p.id === platformId);
+                                  if (!platform) return null;
+                                  const Icon = platform.icon;
+                                  return (
+                                    <span key={platformId} className="h-8 w-8 rounded-full flex items-center justify-center bg-muted text-muted-foreground">
+                                      <Icon className="h-4 w-4" />
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           )}
 
                   {/* Action Buttons */}
@@ -1387,24 +1377,21 @@ const InviteUsers: React.FC = () => {
                     <Button 
                       variant="outline"
                               size="sm"
-                              className="w-28 h-9 text-sm font-medium"
-                      disabled
+                              className="w-28 h-9 text-sm font-medium border-border hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                     >
                       Accept
                     </Button>
                     <Button 
                       variant="outline" 
                               size="sm"
-                              className="w-28 h-9 text-sm font-medium"
-                      disabled
+                              className="w-28 h-9 text-sm font-medium border-border hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                     >
-                      Edit Topics
+                      Negotiate
                     </Button>
                     <Button 
                       variant="outline" 
                               size="sm"
-                              className="w-28 h-9 text-sm font-medium"
-                      disabled
+                              className="w-28 h-9 text-sm font-medium border-border hover:border-primary/40 hover:bg-primary/5 transition-all duration-200"
                     >
                       Decline
                     </Button>
@@ -1412,6 +1399,24 @@ const InviteUsers: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+            
+            {/* Copy Invite Link Button */}
+            <div className="flex justify-center mt-6">
+              <Button 
+                onClick={generateInviteLink}
+                disabled={!canCopyInviteLink}
+                variant="outline"
+                className={cn(
+                  "h-11 px-6 font-medium transition-all duration-200",
+                  canCopyInviteLink
+                    ? "border-primary/30 text-primary hover:bg-primary/5 bg-background"
+                    : "border-border text-muted-foreground bg-background cursor-not-allowed"
+                )}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Invite Link
+              </Button>
+            </div>
                   </div>
                 </div>
               </div>
@@ -1434,13 +1439,12 @@ const InviteUsers: React.FC = () => {
             </Button>
             <Button 
               onClick={generateInviteLink}
-              disabled={!isFormComplete}
-              variant="outline"
+              disabled={!canCopyInviteLink}
               className={cn(
-                "h-11 px-6 font-medium border-2 transition-all duration-200",
-                isFormComplete
-                  ? "border-primary text-primary hover:bg-primary/5"
-                  : "border-border text-muted-foreground"
+                "h-11 px-6 font-medium transition-all duration-200",
+                canCopyInviteLink
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed"
               )}
             >
               <Copy className="mr-2 h-4 w-4" />
