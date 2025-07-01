@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Heart, MessageSquare, Eye, ArrowUp, ImagePlus, Mic, MicOff } from 'lucide-react';
+import { ArrowLeft, Heart, MessageSquare, Eye, ArrowUp, ImagePlus, Mic, MicOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Add Web Speech API types
@@ -109,6 +109,7 @@ const Conversation: React.FC = () => {
   const [recognition, setRecognition] = useState<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selectedImages, setSelectedImages] = useState<{ url: string; file: File }[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -237,49 +238,67 @@ const Conversation: React.FC = () => {
   return (
     <>
       <Navbar />
-      <TransitionWrapper animation="fade" className="min-h-screen bg-background pt-20 pb-24">
+      <TransitionWrapper animation="fade" className="min-h-screen bg-background pt-24 pb-24">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mb-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => navigate('/messages')}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </div>
           <Card className="border shadow-sm">
             {/* Header */}
             <div className="border-b bg-muted/30 p-4">
-              <div className="flex items-center justify-center">
+              <div className="flex flex-col items-center justify-center relative">
+                <button
+                  type="button"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-8 p-0 flex items-center justify-center"
+                  onClick={() => navigate('/messages')}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
                 <p className="text-sm font-medium">
                   {topics.find(t => t.id === currentTopicId)?.title}
                 </p>
+                {topics.find(t => t.id === currentTopicId)?.title === 'Introduction' && (
+                  <span className="text-xs text-muted-foreground mt-1">
+                    Word count will start from the next topic
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="flex">
-              {/* Topics Sidebar */}
-              <div className="w-72 p-4 space-y-4 border-r">
-                <h3 className="font-medium mb-3">Topics</h3>
-                <div className="space-y-2">
-                  {topics.map((topic) => (
-                    <button
-                      key={topic.id}
-                      onClick={() => handleTopicChange(topic.id)}
-                      className={cn(
-                        "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-                        currentTopicId === topic.id
-                          ? "bg-primary text-primary-foreground"
-                          : "hover:bg-muted"
-                      )}
-                    >
-                      {topic.title}
-                    </button>
-                  ))}
+              {sidebarOpen ? (
+                <div className="w-56 p-2 space-y-2 border-r relative">
+                  <button
+                    className="absolute top-2 right-2 p-1 rounded hover:bg-muted transition-colors"
+                    onClick={() => setSidebarOpen(false)}
+                    aria-label="Collapse topics sidebar"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <h3 className="font-medium mb-2">Topics</h3>
+                  <div className="space-y-1">
+                    {topics.map((topic) => (
+                      <button
+                        key={topic.id}
+                        onClick={() => handleTopicChange(topic.id)}
+                        className={cn(
+                          "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
+                          currentTopicId === topic.id
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-muted"
+                        )}
+                      >
+                        {topic.title}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <button
+                  className="w-6 h-10 flex items-center justify-center border-r bg-background hover:bg-muted transition-colors"
+                  onClick={() => setSidebarOpen(true)}
+                  aria-label="Expand topics sidebar"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
 
               {/* Messages Area */}
               <div className="flex-1 flex flex-col h-[calc(100vh-16rem)]">
@@ -287,78 +306,75 @@ const Conversation: React.FC = () => {
                   <div className="space-y-6">
                     {messages
                       .filter(m => m.topicId === currentTopicId)
-                      .map((message) => (
-                      <div key={message.id} className="space-y-2 bg-muted/10 rounded-lg p-4">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarFallback>
-                              {message.sender.name[0]}
-                            </AvatarFallback>
-                          </Avatar>
-                          
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{message.sender.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {formatTimestamp(message.timestamp)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                                  <Heart className="h-3.5 w-3.5" />
-                                  <span>{message.engagement.loves}</span>
-                                </button>
-                                <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
-                                  <MessageSquare className="h-3.5 w-3.5" />
-                                  <span>{message.engagement.comments}</span>
-                                </button>
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Eye className="h-3.5 w-3.5" />
-                                  <span>{message.engagement.views}</span>
-                                </div>
-                              </div>
+                      .map((message, idx, arr) => (
+                        idx === 0 ? (
+                          <div key={message.id} className="mb-4">
+                            <div className="flex items-center gap-2 text-xs mb-1">
+                              <span className="font-medium text-foreground">{message.sender.name}</span>
+                              <span className="text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
                             </div>
-                            
-                            <div className="space-y-3">
-                              {message.content && (
-                                <div className="bg-background rounded-lg p-3">
-                                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                                </div>
-                              )}
-
-                              {message.images && message.images.length > 0 && (
-                                <div className={cn(
-                                  "grid gap-2",
-                                  message.images.length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                )}>
-                                  {message.images.map((img, index) => (
-                                    <div key={index} className={cn(
-                                      "relative rounded-lg overflow-hidden bg-muted/5",
-                                      message.images.length === 1 && "max-w-lg"
-                                    )}>
-                                      <img
-                                        src={img}
-                                        alt={`Image ${index + 1}`}
-                                        className={cn(
-                                          "w-full object-cover rounded-lg",
-                                          message.images.length === 1 ? "max-h-96" : "h-32"
-                                        )}
-                                        onError={(e) => {
-                                          // Handle broken images
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                        }}
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                            <div className="text-sm leading-relaxed mb-2 whitespace-pre-wrap">{message.content}</div>
+                            <div className="flex items-center gap-4 mt-2">
+                              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
+                                <Heart className="h-3.5 w-3.5" />
+                                <span>{message.engagement.loves}</span>
+                              </button>
+                              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>{message.engagement.comments}</span>
+                              </button>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>{message.engagement.views}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
+                        ) : idx === 1 ? (
+                          <div key={message.id} className="mb-4">
+                            <div className="flex items-center gap-2 text-xs mb-1">
+                              <span className="font-medium text-foreground">{message.sender.name}</span>
+                              <span className="text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
+                            </div>
+                            <div className="text-sm leading-relaxed mb-2 whitespace-pre-wrap">{message.content}</div>
+                            <div className="flex items-center gap-4 mt-2">
+                              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
+                                <Heart className="h-3.5 w-3.5" />
+                                <span>{message.engagement.loves}</span>
+                              </button>
+                              <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors">
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>{message.engagement.comments}</span>
+                              </button>
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>{message.engagement.views}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div key={message.id} className="mb-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{message.sender.name}:</span>
+                              <span className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                              <button className="flex items-center gap-1 hover:text-primary transition-colors">
+                                <Heart className="h-3.5 w-3.5" />
+                                <span>{message.engagement.loves}</span>
+                              </button>
+                              <button className="flex items-center gap-1 hover:text-primary transition-colors">
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>{message.engagement.comments}</span>
+                              </button>
+                              <div className="flex items-center gap-1">
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>{message.engagement.views}</span>
+                              </div>
+                              <span className="ml-auto">{formatTimestamp(message.timestamp)}</span>
+                            </div>
+                          </div>
+                        )
+                      ))}
                   </div>
                 </CardContent>
 

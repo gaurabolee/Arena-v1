@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, User, Image, Smile, PaperclipIcon, ThumbsUp } from 'lucide-react';
+import { Send, User, Image, Smile, PaperclipIcon, ThumbsUp, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
@@ -181,6 +180,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       {/* Message input */}
       <div className="border-t p-3">
         <div className="flex flex-col">
+          {/* Info message about word count */}
+          <div className="flex items-center mb-2 text-xs text-muted-foreground gap-2">
+            <Info className="h-4 w-4 text-blue-400" />
+            <span>Word count will start from the next topic.</span>
+          </div>
           <Textarea
             ref={textareaRef}
             value={messageText}

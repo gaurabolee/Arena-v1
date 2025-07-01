@@ -51,6 +51,10 @@ const Navbar: React.FC = () => {
     }
   };
 
+  // Helper for precise nav highlighting
+  const isActive = (path: string) =>
+    location.pathname === path || location.pathname.startsWith(path + '/');
+
   const navLinks = [
     {
       name: 'Home',
@@ -99,6 +103,20 @@ const Navbar: React.FC = () => {
     );
   }
 
+  // Always show nav except on auth pages
+  if (isAuthPage) {
+    return (
+      <header className={cn('fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 bg-transparent py-5')}>
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex items-center gap-2.5">
+            <Logo size={32} angle={135} />
+            <span className="text-xl font-medium">Arena</span>
+          </Link>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className={cn('fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300', scrolled ? 'glassmorphism py-3' : 'bg-transparent py-5')}>
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -129,7 +147,7 @@ const Navbar: React.FC = () => {
                     to={link.path}
                     className={cn(
                       "flex items-center gap-3 text-sm font-medium transition-colors hover:text-primary",
-                      location.pathname === link.path ? "text-primary" : "text-foreground"
+                      isActive(link.path) ? "text-primary" : "text-foreground"
                     )}
                   >
                     <Button 
@@ -137,7 +155,7 @@ const Navbar: React.FC = () => {
                       size="sm" 
                       className={cn(
                         "rounded-full p-2 w-9 h-9 transition-all duration-200 flex items-center justify-center",
-                        location.pathname === link.path ? "bg-muted/20 dark:bg-muted/50" : ""
+                        isActive(link.path) ? "bg-muted/20 dark:bg-muted/50" : ""
                       )}
                       aria-label={link.name}
                     >
@@ -145,7 +163,7 @@ const Navbar: React.FC = () => {
                         <div className="relative flex items-center justify-center w-full h-full">
                           <Bell className={cn(
                             "transition-all duration-200",
-                            location.pathname === link.path ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
+                            isActive(link.path) ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
                           )} />
                           {unreadBellCount > 0 && (
                             <Badge
@@ -160,7 +178,7 @@ const Navbar: React.FC = () => {
                         React.cloneElement(link.icon, {
                           className: cn(
                             "transition-all duration-200",
-                            location.pathname === link.path ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
+                            isActive(link.path) ? "h-[22px] w-[22px] text-primary" : "h-5 w-5 text-foreground"
                           )
                         })
                       )}
@@ -175,13 +193,13 @@ const Navbar: React.FC = () => {
         <div className="flex items-center space-x-4">
           {currentUser && !isLandingPage && !isAuthPage ? (
             <>
-              <Link to="/profile" className={`nav-link ${isProfilePage ? 'profile-active' : ''}`}>
+              <Link to="/profile" className={`nav-link ${isActive('/profile') ? 'profile-active' : ''}`}>
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   className={cn(
                     "rounded-full p-0 w-9 h-9 transition-all duration-200",
-                    isProfilePage ? "bg-muted/20 dark:bg-muted/50" : ""
+                    isActive('/profile') ? "bg-muted/20 dark:bg-muted/50" : ""
                   )} 
                   aria-label="Your profile"
                 >

@@ -786,91 +786,41 @@ const InviteUsers: React.FC = () => {
                 {/* Payment Section */}
                 <div className="space-y-2">
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!incentivizeEnabled) {
-                        // If toggle is OFF, turn it ON and expand the section
-                        setIncentivizeEnabled(true);
-                        setShowPaymentSection(true);
-                      } else {
-                        // If toggle is ON, just toggle the section visibility
-                        setShowPaymentSection(!showPaymentSection);
-                      }
-                      handleOtherSectionInteraction();
-                    }}
+                    onClick={() => setShowPaymentSection(!showPaymentSection)}
                     className="flex items-center justify-between w-full p-3 rounded-lg border border-border hover:bg-muted/30 transition-all duration-200 hover:border-border/60"
                   >
                     <div className="flex items-center gap-3">
                       <div className={cn(
-                        "p-1.5 rounded-full transition-all duration-200",
-                        incentivizeEnabled 
-                          ? "bg-green-100 dark:bg-green-900/20" 
-                          : "bg-gray-100 dark:bg-gray-800"
+                        "p-1.5 rounded-full transition-all duration-200 bg-green-100 dark:bg-green-900/20"
                       )}>
-                        <DollarSign className={cn(
-                          "h-4 w-4 transition-all duration-200",
-                          incentivizeEnabled 
-                            ? "text-green-600" 
-                            : "text-gray-400"
-                        )} />
+                        <DollarSign className="h-4 w-4 text-green-600 transition-all duration-200" />
                       </div>
                       <div className="text-left">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">Incentivize Recipient</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIncentivizeEnabled(!incentivizeEnabled);
-                              if (!incentivizeEnabled) {
-                                setShowPaymentSection(false);
-                              }
-                            }}
-                            className={cn(
-                              "relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-none focus:ring-1 focus:ring-primary/50 overflow-hidden",
-                              incentivizeEnabled 
-                                ? "bg-primary" 
-                                : "bg-gray-300 dark:bg-gray-600"
-                            )}
-                          >
-                            {/* Black segment on the right when ON */}
-                            {incentivizeEnabled && (
-                              <span className="absolute right-0 top-0 h-4 w-3.5 bg-black rounded-r-full z-0" />
-                            )}
-                            <span
-                              className={cn(
-                                "inline-block h-3 w-3 transform rounded-full bg-white transition-transform border border-black/30 dark:border-white/60 z-10",
-                                incentivizeEnabled ? "translate-x-4 shadow-[6px_0_0_0_rgba(0,0,0,1)]" : "translate-x-0.5 shadow-sm"
-                              )}
-                            />
-                          </button>
-                        </div>
-                        {incentivizeEnabled && paymentAmount ? (
+                        <span className="text-sm font-medium">Incentivize Recipient</span>
+                        {paymentAmount ? (
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-medium text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/30 px-2 py-1 rounded-md">
                               ${paymentAmount} offered
                             </p>
                           </div>
-                        ) : incentivizeEnabled ? (
-                          <p className="text-xs text-muted-foreground">Show appreciation for their time with a secure payment</p>
                         ) : (
-                          <p className="text-xs text-muted-foreground">No payment required for this discussion</p>
+                          <p className="text-xs text-muted-foreground">Show appreciation for their time with a secure payment</p>
                         )}
                       </div>
                     </div>
-                    {incentivizeEnabled && showPaymentSection ? (
+                    {showPaymentSection ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : incentivizeEnabled ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     ) : (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     )}
                   </button>
-
-                  {incentivizeEnabled && showPaymentSection && (
+                  {showPaymentSection && (
                     <div className="pl-6 space-y-4 pt-2">
                       {/* Offer Amount - Show First */}
                       <div className="space-y-1.5">
-                        <Label className="text-sm font-medium">Offer Amount</Label>
+                        <Label className="text-sm font-medium flex items-center gap-2">
+                          Offer Amount <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+                        </Label>
                         <div className="grid grid-cols-3 gap-2">
                           {['20', '50', '100', '1000', '2000'].map((amount) => (
                             <button

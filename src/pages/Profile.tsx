@@ -742,106 +742,62 @@ const Profile: React.FC<ProfileProps> = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 max-w-4xl mt-16">
-        <Card className="mb-8 border overflow-hidden transition-all duration-300 hover:shadow-md">
+        <Card className="mb-8 border overflow-hidden transition-all duration-300 hover:shadow-lg rounded-2xl bg-background/80 backdrop-blur-md">
           <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 relative w-full">
               <div className="relative">
-                <Avatar className="h-20 w-20">
+                <Avatar className="h-24 w-24 shadow-md border-4 border-background">
                   <AvatarImage 
                     src={photoURL || undefined} 
                     alt={currentUser.name}
-                    className="object-cover"
+                    className="object-cover rounded-full"
                   />
                   <AvatarFallback>
                     {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : <UserIcon className="h-12 w-12" />}
                   </AvatarFallback>
                 </Avatar>
               </div>
-              
-              <div className="text-center sm:text-left">
-                <div className="flex mb-1">
-                  <div className="relative inline-block">
-                    <CardTitle className="text-2xl font-medium">{formData.name}</CardTitle>
-                    {(() => {
-                      const verifiedCount = Object.values(verificationStatus).filter(s => s.status === 'verified').length;
-                      if (verifiedCount < 1) return null;
-                      let colorClass = '';
-                      let ringClass = '';
-                      if (verifiedCount === 1) {
-                        colorClass = 'text-[#cd7f32]';
-                        ringClass = 'ring-[#cd7f32]';
-                      } else if (verifiedCount === 2) {
-                        colorClass = 'text-gray-400';
-                        ringClass = 'ring-gray-400';
-                      } else {
-                        colorClass = 'text-yellow-400';
-                        ringClass = 'ring-yellow-400';
-                      }
-                      return (
-                        <span className="absolute top-0 left-full ml-1 inline-flex items-center justify-center h-4 w-4 bg-background rounded-full">
-                          <Check className={`h-2 w-2 ${colorClass}`} />
-                        </span>
-                      );
-                    })()}
-                  </div>
+              <div className="flex-1 flex flex-col items-center sm:items-start gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-medium font-sans tracking-tight leading-tight text-foreground">{currentUser.name}</span>
                 </div>
-                <CardDescription>@{formData.username}</CardDescription>
-                <p className="mt-3 text-muted-foreground">
-                  {formData.bio || 'Tell us about yourself...'}
-                </p>
-                {/* Verified Accounts Section */}
-                <div className="mt-6">
-                  <h3 className="text-sm font-semibold mb-2">Verified Accounts</h3>
-                  <div className="flex flex-row gap-4">
-                    {/* LinkedIn */}
-                    <div className="relative flex items-center justify-center">
-                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
-                        <Linkedin className="h-5 w-5 text-foreground" />
-                      </span>
-                      {verificationStatus.linkedin?.status === 'verified' && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
-                          <Check className="h-3 w-3 text-primary" />
-                        </span>
-                      )}
-                    </div>
-                    {/* X (Twitter) */}
-                    <div className="relative flex items-center justify-center">
-                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
-                        <Twitter className="h-5 w-5 text-foreground" />
-                      </span>
-                      {verificationStatus.twitter?.status === 'verified' && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
-                          <Check className="h-3 w-3 text-primary" />
-                        </span>
-                      )}
-                    </div>
-                    {/* Facebook */}
-                    <div className="relative flex items-center justify-center">
-                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
-                        <Facebook className="h-5 w-5 text-foreground" />
-                      </span>
-                      {verificationStatus.facebook?.status === 'verified' && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
-                          <Check className="h-3 w-3 text-primary" />
-                        </span>
-                      )}
-                    </div>
-                    {/* Instagram */}
-                    <div className="relative flex items-center justify-center">
-                      <span className="h-10 w-10 rounded-full bg-muted flex items-center justify-center border border-border">
-                        <Instagram className="h-5 w-5 text-foreground" />
-                      </span>
-                      {verificationStatus.instagram?.status === 'verified' && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-border shadow">
-                          <Check className="h-3 w-3 text-primary" />
-                        </span>
-                      )}
-                    </div>
+                <span className="text-base font-medium text-muted-foreground font-sans">@{currentUser.username}</span>
+                {currentUser.bio && (
+                  <p className="mt-2 text-sm text-muted-foreground font-sans text-center sm:text-left max-w-xl">{currentUser.bio}</p>
+                )}
+                <div className="w-full border-t border-border/40 my-4"></div>
+                <div className="w-full">
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-2 tracking-wide uppercase">Verified Accounts</h3>
+                  <div className="flex flex-row gap-3 justify-center sm:justify-start">
+                    {socialIcons.map(({ name, Icon }) => {
+                      const platformName = name;
+                      const statusInfo = verificationStatus[platformName] || { status: 'unverified' as const };
+                      const isVerified = statusInfo.status === 'verified';
+                      const isPending = statusInfo.status === 'pending';
+                      return (
+                        <div key={platformName} className="relative group">
+                          <span
+                            className={cn(
+                              "h-10 w-10 flex items-center justify-center rounded-full border border-border transition-all bg-background",
+                              isVerified ? "ring-2 ring-primary/60" : isPending ? "opacity-70" : "opacity-60 hover:opacity-90 hover:bg-muted",
+                              "shadow-sm"
+                            )}
+                          >
+                            <Icon className={cn("h-4 w-4 transition-all", isVerified ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}/>
+                          </span>
+                          {isVerified && (
+                            <span className="absolute -top-1.5 -right-1.5 h-4 w-4 bg-white rounded-full flex items-center justify-center border border-primary/30 shadow-sm">
+                              <CheckIcon className="h-3 w-3 text-primary" />
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
-              
-              <div className="mt-4 sm:mt-0 sm:ml-auto flex gap-2">
+              {/* Restore actions at top-right */}
+              <div className="absolute top-0 right-0 flex gap-2">
                 <Button 
                   variant="outline"
                   size="sm"
@@ -856,8 +812,9 @@ const Profile: React.FC<ProfileProps> = () => {
                       variant="ghost" 
                       size="icon"
                       className="h-9 w-9 transition-all duration-200 hover:shadow-sm"
+                      aria-label="Settings"
                     >
-                      <Settings className="h-4 w-4" />
+                      <Settings className="h-5 w-5" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
